@@ -28,6 +28,13 @@ object MonoType {
   /// Primitive Types.
   ///
 
+  /**
+    * Represents an uninhabited type, not an absent value like in Java.
+    */
+  case object Void extends MonoType
+
+  case object AnyType extends MonoType
+
   case object Unit extends MonoType
 
   case object Bool extends MonoType
@@ -69,6 +76,8 @@ object MonoType {
   case class Tuple(elms: List[MonoType]) extends MonoType
 
   case class Enum(sym: Symbol.EnumSym) extends MonoType
+
+  case class Struct(sym: Symbol.StructSym) extends MonoType
 
   case class Arrow(args: List[MonoType], result: MonoType) extends MonoType
 

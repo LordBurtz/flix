@@ -19,6 +19,7 @@ mod System {
     /// Operations on the Standard Input Stream.
     ///
     mod StdIn {
+        import java.io.{InputStreamReader, BufferedReader};
 
         ///
         /// Returns an iterator over lines from the standard input stream.
@@ -31,23 +32,21 @@ mod System {
         /// See also `Console.readLine` for reading from the console.
         ///
         pub def readLines(rc: Region[r]): Iterator[String, IO + r, r] \ { r, IO } =
-            import static get java.lang.System.in: ##java.io.InputStream \ IO as getSystemIn;
-            import new java.io.InputStreamReader(##java.io.InputStream): ##java.io.InputStreamReader \ IO as newInputStream;
-            import new java.io.BufferedReader(##java.io.Reader): ##java.io.BufferedReader \ IO as newBufferedReader;
+            import static java_get_field java.lang.System.in: ##java.io.InputStream \ IO as getSystemIn;
             // note: BufferedReader.readLine can block
             import java.io.BufferedReader.readLine(): String \ IO as brReadLine;
 
-            let br = newBufferedReader(checked_cast(newInputStream(getSystemIn()))); // up-cast to superclass
+            let br = new BufferedReader(new InputStreamReader(getSystemIn())); // up-cast to superclass
             let nextLine = ref None @ rc;
             let next = () -> {
                 let l = match deref nextLine {
                     case Some(line) => if (Object.isNull(line)) None else Some(line)
                     case None =>
                         let n = brReadLine(br);
-                        nextLine := Some(n);
+                        Ref.put(Some(n), nextLine);
                         if (Object.isNull(n)) None else Some(n)
                 };
-                nextLine := None;
+                Ref.put(None, nextLine);
                 l
             };
             Iterator.iterate(rc, next)
@@ -58,6 +57,8 @@ mod System {
     /// Operations on the Standard Output Stream.
     ///
     mod StdOut {
+
+        import java.io.PrintStream
 
         ///
         /// Prints the given string `s` to the standard output stream.
@@ -90,8 +91,8 @@ mod System {
         ///
         /// Returns the standard output stream.
         ///
-        def getOutputStream(): ##java.io.PrintStream \ IO =
-            import static get java.lang.System.out: ##java.io.PrintStream \ IO as getOut;
+        def getOutputStream(): PrintStream \ IO =
+            import static java_get_field java.lang.System.out: ##java.io.PrintStream \ IO as getOut;
             getOut()
 
     }
@@ -133,7 +134,7 @@ mod System {
         /// Returns the standard error stream.
         ///
         def getErrorStream(): ##java.io.PrintStream \ IO =
-            import static get java.lang.System.err: ##java.io.PrintStream \ IO as getErr;
+            import static java_get_field java.lang.System.err: ##java.io.PrintStream \ IO as getErr;
             getErr()
 
     }

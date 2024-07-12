@@ -21,9 +21,10 @@ import ca.uwaterloo.flix.language.ast.TypedAst.Predicate.{Body, Head}
 import ca.uwaterloo.flix.language.ast.TypedAst._
 import ca.uwaterloo.flix.language.ast.ops.TypedAstOps
 import ca.uwaterloo.flix.language.ast.{Ast, Name, SourceLocation, Symbol, Type, TypeConstructor}
+import ca.uwaterloo.flix.language.dbg.AstPrinter._
 import ca.uwaterloo.flix.language.errors.RedundancyError
 import ca.uwaterloo.flix.language.errors.RedundancyError._
-import ca.uwaterloo.flix.language.phase.unification.ClassEnvironment
+import ca.uwaterloo.flix.language.phase.unification.TraitEnvironment
 import ca.uwaterloo.flix.util.{ParOps, Validation}
 
 import java.util.concurrent.ConcurrentHashMap
@@ -78,7 +79,7 @@ object Redundancy {
 
     // Determine whether to return success or soft failure.
     Validation.toSuccessOrSoftFailure(root, errors)
-  }
+  }(DebugValidation())
 
   /**
     * Checks for unused definition symbols.
@@ -139,7 +140,7 @@ object Redundancy {
           !usedTypeVars.contains(tparam.sym) &&
             !tparam.name.name.startsWith("_")
       }
-      result ++= unusedTypeParams.map(tparam => UnusedTypeParam(tparam.name))
+      result ++= unusedTypeParams.map(tparam => UnusedTypeParam(tparam.name, tparam.loc))
     }
     result.toList
   }
@@ -149,7 +150,7 @@ object Redundancy {
     */
   private def checkRedundantTypeConstraints()(implicit root: Root, flix: Flix): List[RedundancyError] = {
     val defErrors = ParOps.parMap(root.defs.values)(defn => redundantTypeConstraints(defn.spec.declaredScheme.tconstrs))
-    val classErrors = ParOps.parMap(root.classes.values)(clazz => redundantTypeConstraints(clazz.superClasses))
+    val classErrors = ParOps.parMap(root.traits.values)(trt => redundantTypeConstraints(trt.superTraits))
     val instErrors = ParOps.parMap(root.instances.values.flatten)(inst => redundantTypeConstraints(inst.tconstrs))
     val sigErrors = ParOps.parMap(root.sigs.values)(sig => redundantTypeConstraints(sig.spec.declaredScheme.tconstrs))
 
@@ -164,7 +165,7 @@ object Redundancy {
       (tconstr1, i1) <- tconstrs.zipWithIndex
       (tconstr2, i2) <- tconstrs.zipWithIndex
       // don't compare a constraint against itself
-      if i1 != i2 && ClassEnvironment.entails(tconstr1, tconstr2, root.classEnv)
+      if i1 != i2 && TraitEnvironment.entails(tconstr1, tconstr2, root.traitEnv)
     } yield RedundancyError.RedundantTypeConstraint(tconstr1, tconstr2, tconstr2.loc)
   }
 
@@ -236,10 +237,13 @@ object Redundancy {
   /**
     * Finds unused type parameters.
     */
-  private def findUnusedTypeParameters(spec: Spec): List[UnusedTypeParam] = {
-    spec.tparams.collect {
-      case tparam if deadTypeVar(tparam.sym, spec.declaredScheme.base.typeVars.map(_.sym)) => UnusedTypeParam(tparam.name)
-    }
+  private def findUnusedTypeParameters(spec: Spec): List[UnusedTypeParam] = spec match {
+    case Spec(_, _, _, tparams, fparams, _, tpe, eff, tconstrs, econstrs, _) =>
+      val tpes = fparams.map(_.tpe) ::: tpe :: eff :: tconstrs.map(_.arg) ::: econstrs.map(_.tpe1) ::: econstrs.map(_.tpe2)
+      val used = tpes.flatMap { t => t.typeVars.map(_.sym) }.toSet
+      tparams.collect {
+        case tparam if deadTypeVar(tparam.sym, used) => UnusedTypeParam(tparam.name, tparam.loc)
+      }
   }
 
 
@@ -938,7 +942,7 @@ object Redundancy {
     * Returns true if the expression is pure.
     */
   private def isUselessExpression(exp: Expr): Boolean =
-    isPure(exp)
+    isPure(exp) && !exp.isInstanceOf[Expr.UncheckedMaskingCast]
 
   /**
     * Returns `true` if the expression must be used.
@@ -1022,6 +1026,7 @@ object Redundancy {
   private def deadDef(decl: Def)(implicit sctx: SharedContext, root: Root): Boolean =
     !decl.spec.ann.isTest &&
       !decl.spec.mod.isPublic &&
+      !decl.spec.ann.isExport &&
       !isMain(decl.sym) &&
       !decl.sym.name.startsWith("_") &&
       !sctx.defSyms.containsKey(decl.sym)

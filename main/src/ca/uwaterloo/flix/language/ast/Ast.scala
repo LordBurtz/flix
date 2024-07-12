@@ -16,8 +16,11 @@
 
 package ca.uwaterloo.flix.language.ast
 
+import ca.uwaterloo.flix.language.ast.shared.Fixity
+
 import java.nio.file.Path
 import java.util.Objects
+import scala.annotation.tailrec
 
 /**
   * A collection of AST nodes that are shared across multiple ASTs.
@@ -79,6 +82,42 @@ object Ast {
     override def hashCode(): Int = input.hashCode()
 
     override def toString: String = name
+
+
+    /**
+      * Gets a line of text from the source as a string.
+      * If line is out of bounds the empty string is returned.
+      *
+      * This function has been adapted from parboiled2 when moving away from the library.
+      * We now produce its accompanying license in full:
+      *
+      * Copyright 2009-2019 Mathias Doenitz
+      *
+      * Licensed under the Apache License, Version 2.0 (the "License");
+      * you may not use this file except in compliance with the License.
+      * You may obtain a copy of the License at
+      *
+      * http://www.apache.org/licenses/LICENSE-2.0
+      *
+      * Unless required by applicable law or agreed to in writing, software
+      * distributed under the License is distributed on an "AS IS" BASIS,
+      * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      * See the License for the specific language governing permissions and
+      * limitations under the License.
+      */
+    def getLine(line: Int): String = {
+      @tailrec
+      def rec(ix: Int, lineStartIx: Int, lineNr: Int): String =
+        if (ix < data.length)
+          if (data(ix) == '\n')
+            if (lineNr < line) rec(ix + 1, ix + 1, lineNr + 1)
+            else new String(data, lineStartIx, math.max(ix - lineStartIx, 0))
+          else rec(ix + 1, lineStartIx, lineNr)
+        else if (lineNr == line) new String(data, lineStartIx, math.max(ix - lineStartIx, 0))
+        else ""
+
+      rec(ix = 0, lineStartIx = 0, lineNr = 1)
+    }
   }
 
   /**
@@ -174,6 +213,15 @@ object Ast {
     }
 
     /**
+      * An annotation that marks a function to exported.
+      *
+      * @param loc the source location of the annotation.
+      */
+    case class Export(loc: SourceLocation) extends Annotation {
+      override def toString: String = "@Export"
+    }
+
+    /**
       * An annotation that marks a construct as internal.
       *
       * @param loc the source location of the annotation.
@@ -250,22 +298,22 @@ object Ast {
     }
 
     /**
-     * An AST node that represents a `@TailRec` annotation.
-     *
-     * A function marked with `@TailRec` is guaranteed to be tail recursive by the compiler.
-     *
-     * @param loc the source location of the annotation.
-     */
+      * An AST node that represents a `@TailRec` annotation.
+      *
+      * A function marked with `@TailRec` is guaranteed to be tail recursive by the compiler.
+      *
+      * @param loc the source location of the annotation.
+      */
     case class TailRecursive(loc: SourceLocation) extends Annotation {
       override def toString: String = "@Tailrec"
     }
 
     /**
-     * An AST node that represents an undefined (i.e. erroneous) annotation.
-     *
-     * @param name the name of the annotation.
-     * @param loc the source location of the annotation.
-     */
+      * An AST node that represents an undefined (i.e. erroneous) annotation.
+      *
+      * @param name the name of the annotation.
+      * @param loc  the source location of the annotation.
+      */
     case class Error(name: String, loc: SourceLocation) extends Annotation {
       override def toString: String = "@" + name
     }
@@ -301,6 +349,11 @@ object Ast {
       * Returns `true` if `this` sequence contains the `@Experimental` annotation.
       */
     def isExperimental: Boolean = annotations exists (_.isInstanceOf[Annotation.Experimental])
+
+    /**
+      * Returns `true` if `this` sequence contains the `@Export` annotation.
+      */
+    def isExport: Boolean = annotations exists (_.isInstanceOf[Annotation.Export])
 
     /**
       * Returns `true` if `this` sequence contains the `@Internal` annotation.
@@ -344,20 +397,20 @@ object Ast {
   }
 
   /**
-    * A common super-type that represents a call type.
+    * A common super-type that represents an expression position (tail position or not).
     */
-  sealed trait CallType
+  sealed trait ExpPosition
 
-  object CallType {
+  object ExpPosition {
     /**
-      * Represents a call in tail position.
+      * Represents an expression in tail position.
       */
-    case object TailCall extends CallType
+    case object Tail extends ExpPosition
 
     /**
-      * Represents a call in non-tail position.
+      * Represents an expression in non-tail position.
       */
-    case object NonTailCall extends CallType
+    case object NonTail extends ExpPosition
   }
 
   /**
@@ -503,25 +556,6 @@ object Ast {
   }
 
   /**
-    * A common super-type for the fixity of an atom.
-    */
-  sealed trait Fixity
-
-  object Fixity {
-
-    /**
-      * The atom is loose (it does not have to be fully materialized before it can be used).
-      */
-    case object Loose extends Fixity
-
-    /**
-      * The atom is fixed (it must be fully materialized before it can be used).
-      */
-    case object Fixed extends Fixity
-
-  }
-
-  /**
     * Represents a positive or negative labelled dependency edge.
     *
     * The labels represent predicate nodes that must co-occur for the dependency to be relevant.
@@ -605,7 +639,7 @@ object Ast {
     /**
       * Represents the head (located class) of a type constraint.
       */
-    case class Head(sym: Symbol.ClassSym, loc: SourceLocation)
+    case class Head(sym: Symbol.TraitSym, loc: SourceLocation)
   }
 
   /**
@@ -660,7 +694,7 @@ object Ast {
   /**
     * Represents a use of a class sym.
     */
-  case class ClassSymUse(sym: Symbol.ClassSym, loc: SourceLocation)
+  case class TraitSymUse(sym: Symbol.TraitSym, loc: SourceLocation)
 
   /**
     * Represents a use of an associated type sym.
@@ -673,9 +707,9 @@ object Ast {
   case class Instance(tpe: Type, tconstrs: List[Ast.TypeConstraint])
 
   /**
-    * Represents the super classes and instances available for a particular class.
+    * Represents the super traits and instances available for a particular traits.
     */
-  case class ClassContext(superClasses: List[Symbol.ClassSym], instances: List[Ast.Instance])
+  case class TraitContext(superTraits: List[Symbol.TraitSym], instances: List[Ast.Instance])
 
   /**
     * Represents the definition of an associated type.
@@ -687,7 +721,7 @@ object Ast {
   /**
     * Represents a derivation on an enum (e.g. `enum E with Eq`).
     */
-  case class Derivation(clazz: Symbol.ClassSym, loc: SourceLocation)
+  case class Derivation(trt: Symbol.TraitSym, loc: SourceLocation)
 
   /**
     * Represents a list of derivations with a source location.
@@ -699,7 +733,7 @@ object Ast {
     * if the enum is `enum Color {` then the source position would point
     * to the position right after `r` and have zero width.
     */
-  case class Derivations(classes: List[Derivation], loc: SourceLocation)
+  case class Derivations(traits: List[Derivation], loc: SourceLocation)
 
   /**
     * Represents the way a variable is bound.
@@ -831,13 +865,15 @@ object Ast {
     sealed trait Decl extends SyntacticContext
 
     object Decl {
-      case object Class extends Decl
+      case object Trait extends Decl
 
       case object Enum extends Decl
 
       case object Instance extends Decl
 
       case object OtherDecl extends Decl
+
+      case object Struct extends Decl
     }
 
     sealed trait Expr extends SyntacticContext

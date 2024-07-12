@@ -17,8 +17,9 @@
 
 package ca.uwaterloo.flix.language.phase.jvm
 
+import ca.uwaterloo.flix.api.Flix
 import ca.uwaterloo.flix.language.ast.ReducedAst._
-import ca.uwaterloo.flix.language.ast.{MonoType, SourceLocation, Symbol}
+import ca.uwaterloo.flix.language.ast.{MonoType, ReducedAst, SourceLocation, Symbol}
 import ca.uwaterloo.flix.language.phase.jvm.JvmName.mangle
 import ca.uwaterloo.flix.util.InternalCompilerException
 
@@ -45,6 +46,8 @@ object JvmOps {
     */
   def getJvmType(tpe: MonoType): JvmType = tpe match {
     // Primitives
+    case MonoType.Void => JvmType.Object
+    case MonoType.AnyType => JvmType.Object
     case MonoType.Unit => JvmType.Unit
     case MonoType.Bool => JvmType.PrimBool
     case MonoType.Char => JvmType.PrimChar
@@ -59,7 +62,6 @@ object JvmOps {
     case MonoType.String => JvmType.String
     case MonoType.Regex => JvmType.Regex
     case MonoType.Region => JvmType.Object
-
     // Compound
     case MonoType.Array(_) => JvmType.Object
     case MonoType.Lazy(_) => JvmType.Object
@@ -68,10 +70,9 @@ object JvmOps {
     case MonoType.RecordEmpty => JvmType.Reference(BackendObjType.Record.jvmName)
     case MonoType.RecordExtend(_, _, _) => JvmType.Reference(BackendObjType.Record.jvmName)
     case MonoType.Enum(_) => JvmType.Object
+    case MonoType.Struct(_) => JvmType.Object
     case MonoType.Arrow(_, _) => getFunctionInterfaceType(tpe)
     case MonoType.Native(clazz) => JvmType.Reference(JvmName.ofClass(clazz))
-
-    case _ => throw InternalCompilerException(s"Unexpected type: '$tpe'.", SourceLocation.Unknown)
   }
 
 
@@ -91,9 +92,10 @@ object JvmOps {
       case Int16 => JvmType.PrimShort
       case Int32 => JvmType.PrimInt
       case Int64 => JvmType.PrimLong
-      case Unit | BigDecimal | BigInt | String | Regex | Region | Array(_) |
-           Lazy(_) | Ref(_) | Tuple(_) | Enum(_) | Arrow(_, _) | RecordEmpty |
-           RecordExtend(_, _, _) | Native(_) => JvmType.Object
+      case Void | AnyType | Unit | BigDecimal | BigInt | String | Regex |
+           Region | Array(_) | Lazy(_) | Ref(_) | Tuple(_) | Enum(_) | Struct(_) |
+           Arrow(_, _) | RecordEmpty | RecordExtend(_, _, _) | Native(_) =>
+        JvmType.Object
     }
   }
 
@@ -114,9 +116,9 @@ object JvmOps {
       case Int32 => JvmType.PrimInt
       case Int64 => JvmType.PrimLong
       case Native(clazz) if clazz == classOf[Object] => JvmType.Object
-      case Unit | BigDecimal | BigInt | String | Regex | Region | Array(_) |
-           Lazy(_) | Ref(_) | Tuple(_) | Enum(_) | Arrow(_, _) | RecordEmpty |
-           RecordExtend(_, _, _) | Native(_) =>
+      case Void | AnyType | Unit | BigDecimal | BigInt | String | Regex |
+           Region | Array(_) | Lazy(_) | Ref(_) | Tuple(_) | Enum(_) | Struct(_) |
+           Arrow(_, _) | RecordEmpty | RecordExtend(_, _, _) | Native(_) =>
         throw InternalCompilerException(s"Unexpected type $tpe", SourceLocation.Unknown)
     }
   }
@@ -229,10 +231,10 @@ object JvmOps {
     *
     * For example:
     *
-    * <root>      =>  Ns
-    * Foo         =>  Foo.Ns
-    * Foo.Bar     =>  Foo.Bar.Ns
-    * Foo.Bar.Baz =>  Foo.Bar.Baz.Ns
+    * <root>      =>  Root$
+    * Foo         =>  Foo
+    * Foo.Bar     =>  Foo.Bar
+    * Foo.Bar.Baz =>  Foo.Bar.Baz
     */
   def getNamespaceClassType(ns: NamespaceInfo): JvmName = {
     getNamespaceName(ns.ns)
@@ -246,8 +248,9 @@ object JvmOps {
   }
 
   private def getNamespaceName(ns: List[String]): JvmName = {
-    val name = JvmName.mkClassName("Ns")
-    JvmName(ns, name)
+    val last = ns.lastOption.getOrElse(s"Root${Flix.Delimiter}")
+    val nsFixed = ns.dropRight(1)
+    JvmName(nsFixed, last)
   }
 
   /**
@@ -258,7 +261,14 @@ object JvmOps {
     * find      =>  m_find
     * length    =>  m_length
     */
-  def getDefMethodNameInNamespaceClass(sym: Symbol.DefnSym): String = "m_" + mangle(sym.name)
+  def getDefMethodNameInNamespaceClass(defn: ReducedAst.Def): String = {
+    /**
+      * Exported names are checked in [[ca.uwaterloo.flix.language.phase.Safety]]
+      * so no mangling is needed.
+      */
+    if (defn.ann.isExport) defn.sym.name
+    else "m_" + mangle(defn.sym.name)
+  }
 
   def getTagName(sym: Symbol.CaseSym): String = mangle(sym.name)
 

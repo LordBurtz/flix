@@ -17,6 +17,7 @@
 package ca.uwaterloo.flix.language.ast
 
 import ca.uwaterloo.flix.api.Flix
+import ca.uwaterloo.flix.language.ast.Ast.Constant
 import ca.uwaterloo.flix.language.fmt.{FormatOptions, FormatType}
 import ca.uwaterloo.flix.util.InternalCompilerException
 import ca.uwaterloo.flix.language.ast.Symbol
@@ -49,7 +50,9 @@ sealed trait Type {
     */
   lazy val typeVars: SortedSet[Type.Var] = this match {
     case x: Type.Var => SortedSet(x)
+
     case Type.Cst(tc, _) => SortedSet.empty
+
     case Type.Apply(tpe1, tpe2, _) => tpe1.typeVars ++ tpe2.typeVars
     case Type.Alias(_, args, _, _) => args.foldLeft(SortedSet.empty[Type.Var])((acc, t) => acc ++ t.typeVars)
     case Type.AssocType(_, arg, _, _) => arg.typeVars // TODO ASSOC-TYPES throw error?
@@ -61,8 +64,8 @@ sealed trait Type {
   def effects: SortedSet[Symbol.EffectSym] = this match {
     case Type.Cst(TypeConstructor.Effect(sym), _) => SortedSet(sym)
 
-    case _: Type.Cst => SortedSet.empty
     case _: Type.Var => SortedSet.empty
+    case _: Type.Cst => SortedSet.empty
 
     case Type.Apply(tpe1, tpe2, _) => tpe1.effects ++ tpe2.effects
     case Type.Alias(_, _, tpe, _) => tpe.effects
@@ -75,12 +78,25 @@ sealed trait Type {
   def cases: SortedSet[Symbol.RestrictableCaseSym] = this match {
     case Type.Cst(TypeConstructor.CaseSet(syms, _), _) => syms
 
-    case _: Type.Cst => SortedSet.empty
     case _: Type.Var => SortedSet.empty
+    case _: Type.Cst => SortedSet.empty
 
     case Type.Apply(tpe1, tpe2, _) => tpe1.cases ++ tpe2.cases
     case Type.Alias(_, _, tpe, _) => tpe.cases
     case Type.AssocType(_, arg, _, _) => arg.cases // TODO ASSOC-TYPES throw error?
+  }
+
+  /**
+    * Returns all the associated types in the given type.
+    */
+  def assocs: Set[Type.AssocType] = this match {
+    case t: Type.AssocType => Set(t)
+
+    case _: Type.Var => Set.empty
+    case _: Type.Cst => Set.empty
+
+    case Type.Apply(tpe1, tpe2, _) => tpe1.assocs ++ tpe2.assocs
+    case Type.Alias(_, _, tpe, _) => tpe.assocs
   }
 
   /**
@@ -160,13 +176,31 @@ sealed trait Type {
 
   /**
     * Applies `f` to every type variable in `this` type.
+    *
+    * Performance Note: We are on a hot path. We take extra care to avoid redundant type objects.
     */
   def map(f: Type.Var => Type): Type = this match {
     case tvar: Type.Var => f(tvar)
+
     case Type.Cst(_, _) => this
-    case Type.Apply(tpe1, tpe2, loc) => Type.Apply(tpe1.map(f), tpe2.map(f), loc)
-    case Type.Alias(sym, args, tpe, loc) => Type.Alias(sym, args.map(_.map(f)), tpe.map(f), loc)
-    case Type.AssocType(sym, args, kind, loc) => Type.AssocType(sym, args.map(_.map(f)), kind, loc)
+
+    case Type.Apply(tpe1, tpe2, loc) =>
+      val t1 = tpe1.map(f)
+      val t2 = tpe2.map(f)
+      // Performance: Reuse this, if possible.
+      if ((t1 eq tpe1) && (t2 eq tpe2)) {
+        this
+      } else {
+        Type.Apply(t1, t2, loc)
+      }
+
+    case Type.Alias(sym, args, tpe, loc) =>
+      // Performance: Few aliases, not worth optimizing.
+      Type.Alias(sym, args.map(_.map(f)), tpe.map(f), loc)
+
+    case Type.AssocType(sym, args, kind, loc) =>
+      // Performance: Few associated types, not worth optimizing.
+      Type.AssocType(sym, args.map(_.map(f)), kind, loc)
   }
 
   /**
@@ -488,10 +522,23 @@ object Type {
   /**
     * Returns a fresh type variable of the given kind `k` and rigidity `r`.
     */
-  def freshVar(k: Kind, loc: SourceLocation, isRegion: Boolean = false, text: Ast.VarText = Ast.VarText.Absent)(implicit level: Level, flix: Flix): Type.Var = {
+  def freshVar(k: Kind, loc: SourceLocation, isRegion: Boolean = false, text: Ast.VarText = Ast.VarText.Absent)(implicit flix: Flix): Type.Var = {
     val sym = Symbol.freshKindedTypeVarSym(text, k, isRegion, loc)
     Type.Var(sym, loc)
   }
+
+  /**
+    * Returns a fresh error type of the given kind `k`.
+    */
+  def freshError(k: Kind, loc: SourceLocation)(implicit flix: Flix): Type = {
+    val id = flix.genSym.freshId()
+    Type.Cst(TypeConstructor.Error(id, k), loc)
+  }
+
+  /**
+    * Returns the AnyType type with given source location `loc`.
+    */
+  def mkAnyType(loc: SourceLocation): Type = Type.Cst(TypeConstructor.AnyType, loc)
 
   /**
     * Returns the Unit type with given source location `loc`.
@@ -1041,6 +1088,26 @@ object Type {
     else {
       Type.mkNative(c, SourceLocation.Unknown)
     }
+  }
+
+  /**
+    * Returns the type of the given constant.
+    */
+  def constantType(cst: Ast.Constant): Type = cst match {
+    case Constant.Unit => Type.Unit
+    case Constant.Null => Type.Null
+    case Constant.Bool(_) => Type.Bool
+    case Constant.Char(_) => Type.Char
+    case Constant.Float32(_) => Type.Float32
+    case Constant.Float64(_) => Type.Float64
+    case Constant.BigDecimal(_) => Type.BigDecimal
+    case Constant.Int8(_) => Type.Int8
+    case Constant.Int16(_) => Type.Int16
+    case Constant.Int32(_) => Type.Int32
+    case Constant.Int64(_) => Type.Int64
+    case Constant.BigInt(_) => Type.BigInt
+    case Constant.Str(_) => Type.Str
+    case Constant.Regex(_) => Type.Regex
   }
 
 }

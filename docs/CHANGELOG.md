@@ -1,5 +1,27 @@
 # Changelog
 
+Version 0.48.0:
+- Compiler: Added support for resilient lexing and parsing (thanks Herluf!)
+
+Version 0.47.0:
+- Language: Added support for associated effects (thanks Matt!)
+- Library: Added `Iterable` instances for maps (thanks Stephen!)
+- Library: Added associated effects to `Iterable` and `Foldable` (thanks Stephen!)
+- Library: Added `FromJava` and `ToJava` and instances (thanks Stephen!)
+- Library: Added missing `toVector` functions (thanks Stephen!)
+- Compiler: Reduced memory usage of types (thanks Magnus!)
+
+Version 0.46.0: 
+- Language: Added support for associated types (thanks Matt!)
+- Compiler: Reworked type inference to use constraints (thanks Matt!)
+- Compiler: Reduced memory usage of types and source locations (thanks Magnus!)
+
+Version 0.45.0:
+- Compiler: Added support for the `build-fatjar` command (thanks Chanattan Sok!)
+- Compiler: Added support for the `outdated` command (thanks Holger!)
+- Library: Added `Coerce` type class (thanks Magnus!)
+- Library: Added `purityOf` functions (thanks Jakob!)
+
 Version 0.44.0:
 - Language: Reworked `IO` to be its own effect (thanks Matt!)
 - Library: Added `purityOf` to simplify reflection on purity (thanks Jakob!)

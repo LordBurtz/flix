@@ -36,13 +36,12 @@ object DerivationError {
     * @param legalSyms the list of class symbols of legal derivations.
     * @param loc       the location where the error occurred.
     */
-  case class IllegalDerivation(sym: Symbol.ClassSym, legalSyms: List[Symbol.ClassSym], loc: SourceLocation) extends DerivationError with Recoverable {
+  case class IllegalDerivation(sym: Symbol.TraitSym, legalSyms: List[Symbol.TraitSym], loc: SourceLocation) extends DerivationError with Recoverable {
     override def summary: String = s"Illegal derivation: ${sym.name}"
 
     def message(formatter: Formatter): String = {
       import formatter._
-      s"""${line(kind, source.name)}
-         |>> Illegal derivation '${red(sym.name)}'.
+      s""">> Illegal derivation '${red(sym.name)}'.
          |
          |${code(loc, "Illegal derivation.")}
          |""".stripMargin
@@ -61,17 +60,36 @@ object DerivationError {
     * @param classSym the class symbol of what is being derived.
     * @param loc      The source location where the error occurred.
     */
-  case class IllegalDerivationForEmptyEnum(sym: Symbol.EnumSym, classSym: Symbol.ClassSym, loc: SourceLocation) extends DerivationError with Recoverable {
+  case class IllegalDerivationForEmptyEnum(sym: Symbol.EnumSym, classSym: Symbol.TraitSym, loc: SourceLocation) extends DerivationError with Recoverable {
     def summary: String = s"Cannot derive '${classSym.name}' for the empty enum '${sym.name}'."
 
     def message(formatter: Formatter): String = {
       import formatter._
-      s"""${line(kind, source.name)}
-         |>> Cannot derive '${magenta(classSym.name)}' for the empty enum '${red(sym.name)}'.
+      s""">> Cannot derive '${magenta(classSym.name)}' for the empty enum '${red(sym.name)}'.
          |
          |${code(loc, "illegal derivation")}
          |
          |Flix cannot derive any instances for an empty enumeration.
+         |""".stripMargin
+    }
+  }
+
+  /**
+    * An error to indicate the derivation of Coerce for a non-singleton enum.
+    *
+    * @param sym the enum symbol
+    * @param loc the source location where the error occurred.
+    */
+  case class IllegalNonSingletonCoerce(sym: Symbol.EnumSym, loc: SourceLocation) extends DerivationError with Recoverable {
+    def summary: String = s"Cannot derive 'Coerce' for the non-singleton enum '${sym.name}'."
+
+    def message(formatter: Formatter): String = {
+      import formatter._
+      s""">> Cannot derive '${magenta("Coerce")}' for the non-singleton enum '${red(sym.name)}'.
+         |
+         |${code(loc, "illegal derivation")}
+         |
+         |'Coerce' can only be derived for enums with exactly one case.
          |""".stripMargin
     }
   }

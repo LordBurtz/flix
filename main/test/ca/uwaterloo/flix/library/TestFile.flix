@@ -20,15 +20,17 @@ mod TestFile {
     use Applicative.{*>}
     use Monad.{>>=}
     use IOError.Generic
+    import java.io.IOException
+    import java.nio.file.Path
 
     ///
     /// Helper - make a filepath within the temp directory.
     /// Use `java.nio.file.Path` functions for platform independence.
     ///
     def makeTempPath(fileName: String): Result[IOError, String] = region rc {
-        import static java.nio.file.Path.of(String, Array[String, rc]): ##java.nio.file.Path \ rc as ofPath;
+        import static java.nio.file.Path.of(String, Array[String, rc]): Path \ rc as ofPath;
         import java.nio.file.Path.toString(): String \ {};
-        import java.nio.file.Path.normalize(): ##java.nio.file.Path \ {};
+        import java.nio.file.Path.normalize(): Path \ {};
         let tempdir = match Environment.getTemporaryDirectory() {
             case Some(dir)  => Ok(dir)
             case None       => Err(Generic("Could not find TemporaryDirectory"))
@@ -40,9 +42,9 @@ mod TestFile {
                 Ok(path)
             }, tempdir)
         } catch {
-            case ex: ##java.io.IOException =>
+            case ex: IOException =>
                 import java.lang.Throwable.getMessage(): String \ {};
-                Err(Generic(getMessage(ex)))
+                Err(Generic(getMessage(checked_cast(ex))))
         }
     }
 
@@ -194,7 +196,7 @@ mod TestFile {
 
     @test
     def read01(): Bool \ IO = region rc {
-        let arr: Array[Int8, rc] = Array.new(rc, 1);
+        let arr: Array[Int8, rc] = Array.empty(rc, 1);
         let expected = Array#{-1i8} @ rc;
         testReadFunction("./main/test/ca/uwaterloo/flix/library/testdata/255-1byte.bin",
                     File.read!(arr),
@@ -204,7 +206,7 @@ mod TestFile {
 
     @test
     def read02(): Bool \ IO = region rc {
-        let arr: Array[Int8, rc] = Array.new(rc, 8);
+        let arr: Array[Int8, rc] = Array.empty(rc, 8);
         let expected = Array#{0i8, 65i8, 0i8, 66i8, 0i8, 67i8, 0i8, 68i8} @ rc;
         testReadFunction("./main/test/ca/uwaterloo/flix/library/testdata/ABCD.bin",
                     File.read!(arr),
@@ -218,7 +220,7 @@ mod TestFile {
 
     @test
     def readWith01(): Bool \ IO = region rc {
-        let arr: Array[Int8, rc] = Array.new(rc, 6);
+        let arr: Array[Int8, rc] = Array.empty(rc, 6);
         let expected = Array#{0i8, 65i8, 0i8, 66i8, 0i8, 0i8} @ rc;
         testReadFunction("./main/test/ca/uwaterloo/flix/library/testdata/ABCD.bin",
                     File.readWith!(destOffset = 0, length = 4, arr),
@@ -228,7 +230,7 @@ mod TestFile {
 
     @test
     def readWith02(): Bool \ IO = region rc {
-        let arr: Array[Int8, rc] = Array.new(rc, 6);
+        let arr: Array[Int8, rc] = Array.empty(rc, 6);
         let expected = Array#{0i8, 0i8, 0i8, 65i8, 0i8, 66i8} @ rc;
         testReadFunction("./main/test/ca/uwaterloo/flix/library/testdata/ABCD.bin",
                     File.readWith!(destOffset = 2, length = 4, arr),
@@ -242,7 +244,7 @@ mod TestFile {
 
     @test
     def readFully01(): Bool \ IO = region rc {
-        let arr: Array[Int8, rc] = Array.new(rc, 1);
+        let arr: Array[Int8, rc] = Array.empty(rc, 1);
         let expected = Array#{-1i8} @ rc;
         testReadFunction("./main/test/ca/uwaterloo/flix/library/testdata/255-1byte.bin",
                     File.readFully!(arr),
@@ -252,7 +254,7 @@ mod TestFile {
 
     @test
     def readFully02(): Bool \ IO = region rc {
-        let arr: Array[Int8, rc] = Array.new(rc, 8);
+        let arr: Array[Int8, rc] = Array.empty(rc, 8);
         let expected = Array#{0i8, 65i8, 0i8, 66i8, 0i8, 67i8, 0i8, 68i8} @ rc;
         testReadFunction("./main/test/ca/uwaterloo/flix/library/testdata/ABCD.bin",
                     File.readFully!(arr),
@@ -266,7 +268,7 @@ mod TestFile {
 
     @test
     def readFullyWith01(): Bool \ IO = region rc {
-        let arr: Array[Int8, rc] = Array.new(rc, 6);
+        let arr: Array[Int8, rc] = Array.empty(rc, 6);
         let expected = Array#{0i8, 65i8, 0i8, 66i8, 0i8, 0i8} @ rc;
         testReadFunction("./main/test/ca/uwaterloo/flix/library/testdata/ABCD.bin",
                     File.readFullyWith!(destOffset = 0, length = 4, arr),
@@ -276,7 +278,7 @@ mod TestFile {
 
     @test
     def readFullyWith02(): Bool \ IO = region rc {
-        let arr: Array[Int8, rc] = Array.new(rc, 6);
+        let arr: Array[Int8, rc] = Array.empty(rc, 6);
         let expected = Array#{0i8, 0i8, 0i8, 65i8, 0i8, 66i8} @ rc;
         testReadFunction("./main/test/ca/uwaterloo/flix/library/testdata/ABCD.bin",
                     File.readFullyWith!(destOffset = 2, length = 4, arr),
@@ -455,7 +457,7 @@ mod TestFile {
     @test
     def write01(): Bool \ IO = region rc {
         let src = Array#{0i8, 1i8, 2i8, 3i8} @ rc;
-        let dest = Array.new(rc, 4);
+        let dest = Array.empty(rc, 4);
         let expected = Array#{0i8, 1i8, 2i8, 3i8} @ rc;
         (makeTempPath("outfile01.bin") >>= path ->
             testWriteFunctionWithReadBack(path,
@@ -472,7 +474,7 @@ mod TestFile {
     @test
     def writeWith01(): Bool \ IO = region rc {
         let src = Array#{0i8, 1i8, 2i8, 3i8} @ rc;
-        let dest = Array.new(rc, 2);
+        let dest = Array.empty(rc, 2);
         let expected = Array#{2i8, 3i8} @ rc;
         (makeTempPath("outfile01.bin") >>= path ->
             testWriteFunctionWithReadBack(path,

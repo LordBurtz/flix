@@ -93,16 +93,20 @@ object Main {
       threads = cmdOpts.threads.getOrElse(Options.Default.threads),
       loadClassFiles = Options.Default.loadClassFiles,
       assumeYes = cmdOpts.assumeYes,
+      xnoverify = cmdOpts.xnoverify,
       xbddthreshold = cmdOpts.xbddthreshold,
       xnoboolcache = cmdOpts.xnoboolcache,
       xnoboolspecialcases = cmdOpts.xnoboolspecialcases,
-      xnobooltable = cmdOpts.xnobooltable,
       xnoboolunif = cmdOpts.xnoboolunif,
       xnoqmc = cmdOpts.xnoqmc,
       xnooptimizer = cmdOpts.xnooptimizer,
-      xprintphase = cmdOpts.xprintphase,
+      xprintphases = cmdOpts.xprintphases,
+      xdeprecated = cmdOpts.xdeprecated,
       xsummary = cmdOpts.xsummary,
-      xparser = cmdOpts.xparser,
+      xfuzzer = cmdOpts.xfuzzer,
+      xprinttyper = cmdOpts.xprinttyper,
+      xverifyeffects = cmdOpts.xverifyeffects,
+      xsubeffecting = cmdOpts.xsubeffecting,
       XPerfFrontend = cmdOpts.XPerfFrontend,
       XPerfN = cmdOpts.XPerfN
     )
@@ -171,6 +175,17 @@ object Main {
         case Command.BuildJar =>
           flatMapN(Bootstrap.bootstrap(cwd, options.githubToken)) {
             bootstrap => bootstrap.buildJar()
+          }.toHardResult match {
+            case Result.Ok(_) =>
+              System.exit(0)
+            case Result.Err(errors) =>
+              errors.map(_.message(formatter)).foreach(println)
+              System.exit(1)
+          }
+
+        case Command.BuildFatJar =>
+          flatMapN(Bootstrap.bootstrap(cwd, options.githubToken)) {
+            bootstrap => bootstrap.buildFatJar()
           }.toHardResult match {
             case Result.Ok(_) =>
               System.exit(0)
@@ -290,9 +305,29 @@ object Main {
               System.exit(1)
           }
 
+        case Command.Outdated =>
+          flatMapN(Bootstrap.bootstrap(cwd, options.githubToken)) {
+            bootstrap =>
+              val flix = new Flix().setFormatter(formatter)
+              flix.setOptions(options.copy(progress = false))
+              bootstrap.outdated(flix)(System.err)
+          }.toHardResult match {
+            case Result.Ok(false) =>
+              // Up to date
+              System.exit(0)
+            case Result.Ok(true) =>
+              // Contains outdated dependencies
+              System.exit(1)
+            case Result.Err(errors) =>
+              errors.map(_.message(formatter)).foreach(println)
+              System.exit(1)
+          }
 
         case Command.CompilerPerf =>
           CompilerPerf.run(options)
+
+        case Command.CompilerMemory =>
+          CompilerMemory.run(options)
 
       }
     }
@@ -317,22 +352,26 @@ object Main {
                      listen: Option[Int] = None,
                      threads: Option[Int] = None,
                      assumeYes: Boolean = false,
+                     xnoverify: Boolean = false,
                      xbenchmarkCodeSize: Boolean = false,
                      xbenchmarkIncremental: Boolean = false,
                      xbenchmarkPhases: Boolean = false,
                      xbenchmarkFrontend: Boolean = false,
                      xbenchmarkThroughput: Boolean = false,
+                     xdeprecated: Boolean = false,
                      xbddthreshold: Option[Int] = None,
                      xlib: LibLevel = LibLevel.All,
                      xnoboolcache: Boolean = false,
                      xnoboolspecialcases: Boolean = false,
-                     xnobooltable: Boolean = false,
                      xnoboolunif: Boolean = false,
                      xnoqmc: Boolean = false,
                      xnooptimizer: Boolean = false,
-                     xprintphase: Set[String] = Set.empty,
+                     xprintphases: Boolean = false,
                      xsummary: Boolean = false,
-                     xparser: Boolean = false,
+                     xfuzzer: Boolean = false,
+                     xprinttyper: Option[String] = None,
+                     xverifyeffects: Boolean = false,
+                     xsubeffecting: SubEffectLevel = SubEffectLevel.Nothing,
                      XPerfN: Option[Int] = None,
                      XPerfFrontend: Boolean = false,
                      files: Seq[File] = Seq())
@@ -354,6 +393,8 @@ object Main {
 
     case object BuildJar extends Command
 
+    case object BuildFatJar extends Command
+
     case object BuildPkg extends Command
 
     case object Doc extends Command
@@ -370,7 +411,12 @@ object Main {
 
     case object Release extends Command
 
+    case object Outdated extends Command
+
     case object CompilerPerf extends Command
+
+    case object CompilerMemory extends Command
+
   }
 
   /**
@@ -379,10 +425,18 @@ object Main {
     * @param args the arguments array.
     */
   def parseCmdOpts(args: Array[String]): Option[CmdOpts] = {
-    implicit val readInclusion: scopt.Read[LibLevel] = scopt.Read.reads {
+    implicit val readLibLevel: scopt.Read[LibLevel] = scopt.Read.reads {
       case "nix" => LibLevel.Nix
       case "min" => LibLevel.Min
       case "all" => LibLevel.All
+      case arg => throw new IllegalArgumentException(s"'$arg' is not a valid library level. Valid options are 'all', 'min', and 'nix'.")
+    }
+
+    implicit val readSubEffectLevel: scopt.Read[SubEffectLevel] = scopt.Read.reads {
+      case "nothing" => SubEffectLevel.Nothing
+      case "lambdas" => SubEffectLevel.Lambdas
+      case "lambdas-and-instances" => SubEffectLevel.LambdasAndInstances
+      case "lambdas-and-defs" => SubEffectLevel.LambdasAndDefs
       case arg => throw new IllegalArgumentException(s"'$arg' is not a valid library level. Valid options are 'all', 'min', and 'nix'.")
     }
 
@@ -399,6 +453,8 @@ object Main {
       cmd("build").action((_, c) => c.copy(command = Command.Build)).text("  builds (i.e. compiles) the current project.")
 
       cmd("build-jar").action((_, c) => c.copy(command = Command.BuildJar)).text("  builds a jar-file from the current project.")
+
+      cmd("build-fatjar").action((_, c) => c.copy(command = Command.BuildFatJar)).text("  builds a fatjar-file from the current project.")
 
       cmd("build-pkg").action((_, c) => c.copy(command = Command.BuildPkg)).text("  builds a fpkg-file from the current project.")
 
@@ -418,8 +474,11 @@ object Main {
             .required()
         )
 
-      cmd("release").text("  release a new version to GitHub.")
+      cmd("release").text("  releases a new version to GitHub.")
         .action((_, c) => c.copy(command = Command.Release))
+
+      cmd("outdated").text("  shows dependencies which have newer versions available.")
+        .action((_, c) => c.copy(command = Command.Outdated))
 
       cmd("Xperf").action((_, c) => c.copy(command = Command.CompilerPerf)).children(
         opt[Unit]("frontend")
@@ -429,6 +488,8 @@ object Main {
           .action((v, c) => c.copy(XPerfN = Some(v)))
           .text("number of compilations")
       ).hidden()
+
+      cmd("Xmemory").action((_, c) => c.copy(command = Command.CompilerMemory)).hidden()
 
       note("")
 
@@ -469,6 +530,10 @@ object Main {
       note("")
       note("The following options are experimental:")
 
+      // Xnoverify
+      opt[Unit]("Xnoverify").action((_, c) => c.copy(xnoverify = true)).
+        text("disables verification of the last AST.")
+
       // Xbenchmark-code-size
       opt[Unit]("Xbenchmark-code-size").action((_, c) => c.copy(xbenchmarkCodeSize = true)).
         text("[experimental] benchmarks the size of the generated JVM files.")
@@ -493,13 +558,17 @@ object Main {
       opt[LibLevel]("Xlib").action((arg, c) => c.copy(xlib = arg)).
         text("[experimental] controls the amount of std. lib. to include (nix, min, all).")
 
+      // Xdeprecated
+      opt[Unit]("Xdeprecated").action((_, c) => c.copy(xdeprecated = true)).
+        text("[experimental] enables deprecated features.")
+
       // Xno-optimizer
       opt[Unit]("Xno-optimizer").action((_, c) => c.copy(xnooptimizer = true)).
         text("[experimental] disables compiler optimizations.")
 
       // Xprint-phase
-      opt[Seq[String]]("Xprint-phase").action((m, c) => c.copy(xprintphase = m.toSet)).
-        text("[experimental] prints the AST(s) after the given phase(s). 'all' prints all ASTs.")
+      opt[Unit]("Xprint-phases").action((_, c) => c.copy(xprintphases = true)).
+        text("[experimental] prints the ASTs after the each phase.")
 
       // Xbdd-threshold
       opt[Int]("Xbdd-threshold").action((n, c) => c.copy(xbddthreshold = Some(n))).
@@ -513,10 +582,6 @@ object Main {
       opt[Unit]("Xno-bool-specialcases").action((_, c) => c.copy(xnoboolspecialcases = true)).
         text("[experimental] disables hardcoded Boolean unification special cases.")
 
-      // Xno-bool-table
-      opt[Unit]("Xno-bool-table").action((_, c) => c.copy(xnobooltable = true)).
-        text("[experimental] disables Boolean minimization via tabling.")
-
       // Xno-bool-unif
       opt[Unit]("Xno-bool-unif").action((_, c) => c.copy(xnoboolunif = true)).
         text("[experimental] disables Boolean unification. (DO NOT USE).")
@@ -529,9 +594,21 @@ object Main {
       opt[Unit]("Xsummary").action((_, c) => c.copy(xsummary = true)).
         text("[experimental] prints a summary of the compiled modules.")
 
-      // Xparser
-      opt[Unit]("Xparser").action((_, c) => c.copy(xparser = true)).
-        text("[experimental] disables new experimental lexer and parser.")
+      // Xfuzzer
+      opt[Unit]("Xfuzzer").action((_, c) => c.copy(xfuzzer = true)).
+        text("[experimental] enables compiler fuzzing.")
+
+      // Xprint-typer
+      opt[String]("Xprint-typer").action((sym, c) => c.copy(xprinttyper = Some(sym))).
+        text("[experimental] writes constraints to dot files.")
+
+      // Xverify-effects
+      opt[String]("Xverify-effects").action((_, c) => c.copy(xverifyeffects = true)).
+        text("[experimental] verifies consistency of effects after typechecking")
+
+      // Xsubeffecting
+      opt[SubEffectLevel]("Xsubeffecting").action((level, c) => c.copy(xsubeffecting = level)).
+        text("[experimental] enables sub-effecting in select places")
 
       note("")
 

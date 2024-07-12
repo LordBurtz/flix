@@ -33,18 +33,15 @@ object SemanticTokensProvider {
     * Processes a request for (full) semantic tokens.
     */
   def provideSemanticTokens(uri: String)(implicit index: Index, root: Root): JObject = {
-    if (root == null)
-      throw new IllegalArgumentException("The argument 'root' must be non-null.")
-
     //
     // This class uses iterators over lists to ensure fast append (!)
     //
 
     //
-    // Construct an iterator of the semantic tokens from classes.
+    // Construct an iterator of the semantic tokens from traits.
     //
-    val classTokens = root.classes.values.flatMap {
-      case decl if include(uri, decl.sym.loc) => visitClass(decl)
+    val traitTokens = root.traits.values.flatMap {
+      case decl if include(uri, decl.sym.loc) => visitTrait(decl)
       case _ => Nil
     }
 
@@ -53,7 +50,7 @@ object SemanticTokensProvider {
     //
     val instanceTokens = root.instances.values.flatMap {
       case instances => instances.flatMap {
-        case instance if include(uri, instance.clazz.loc) => visitInstance(instance)
+        case instance if include(uri, instance.trt.loc) => visitInstance(instance)
         case _ => Nil
       }
     }
@@ -93,7 +90,7 @@ object SemanticTokensProvider {
     //
     // Collect all tokens into one list.
     //
-    val allTokens = (classTokens ++ instanceTokens ++ defnTokens ++ enumTokens ++ typeAliasTokens ++ effectTokens).toList
+    val allTokens = (traitTokens ++ instanceTokens ++ defnTokens ++ enumTokens ++ typeAliasTokens ++ effectTokens).toList
 
     //
     // We keep all tokens that are: (i) single-line tokens, (ii) have the same source as `uri`, and (iii) come from real source locations.
@@ -113,7 +110,7 @@ object SemanticTokensProvider {
     //
     // Construct the JSON result.
     //
-    ("status" -> ResponseStatus.Success) ~ ("result" -> ("data" -> encodedTokens))
+    ("result" -> ("data" -> encodedTokens))
   }
 
   /**
@@ -122,14 +119,14 @@ object SemanticTokensProvider {
   private def include(uri: String, loc: SourceLocation): Boolean = loc.source.name == uri
 
   /**
-    * Returns all semantic tokens in the given class `classDecl`.
+    * Returns all semantic tokens in the given trait `traitDecl`.
     */
-  private def visitClass(classDecl: TypedAst.Class): Iterator[SemanticToken] = classDecl match {
-    case TypedAst.Class(_, _, _, sym, tparam, superClasses, assocs, signatures, laws, _) =>
+  private def visitTrait(traitDecl: TypedAst.Trait): Iterator[SemanticToken] = traitDecl match {
+    case TypedAst.Trait(_, _, _, sym, tparam, superTraits, assocs, signatures, laws, _) =>
       val t = SemanticToken(SemanticTokenType.Interface, Nil, sym.loc)
       IteratorOps.all(
         Iterator(t),
-        superClasses.flatMap(visitTypeConstraint),
+        superTraits.flatMap(visitTypeConstraint),
         assocs.flatMap(visitAssocTypeSig),
         visitTypeParam(tparam),
         signatures.flatMap(visitSig),
@@ -164,7 +161,7 @@ object SemanticTokensProvider {
       IteratorOps.all(
         Iterator(t),
         visitTypeParams(tparams),
-        Iterator(derives.classes: _*).map {
+        Iterator(derives.traits: _*).map {
           case Ast.Derivation(_, loc) => SemanticToken(SemanticTokenType.Class, Nil, loc)
         },
         cases.foldLeft(Iterator.empty[SemanticToken]) {
@@ -240,11 +237,12 @@ object SemanticTokensProvider {
     * Returns all semantic tokens in the given associated type signature `assoc`.
     */
   private def visitAssocTypeSig(assoc: TypedAst.AssocTypeSig): Iterator[SemanticToken] = assoc match {
-    case TypedAst.AssocTypeSig(_, _, sym, tparam, _, _) =>
+    case TypedAst.AssocTypeSig(_, _, sym, tparam, _, tpe, _) =>
       val t = SemanticToken(SemanticTokenType.Type, Nil, sym.loc)
       IteratorOps.all(
         Iterator(t),
         visitTypeParam(tparam),
+        tpe.iterator.flatMap(visitType)
       )
   }
 
@@ -674,8 +672,12 @@ object SemanticTokensProvider {
     case TypeConstructor.Receiver => true
     case TypeConstructor.Lazy => true
     case TypeConstructor.Enum(_, _) => true
+    case TypeConstructor.Struct(_, _) => true
     case TypeConstructor.RestrictableEnum(_, _) => true
     case TypeConstructor.Native(_) => true
+    case TypeConstructor.JvmConstructor(_) => false
+    case TypeConstructor.JvmMethod(_) => false
+    case TypeConstructor.MethodReturnType => false
     case TypeConstructor.Array => true
     case TypeConstructor.Vector => true
     case TypeConstructor.Ref => true
@@ -687,6 +689,7 @@ object SemanticTokensProvider {
     case TypeConstructor.RegionToStar => true
 
     // invisible
+    case TypeConstructor.AnyType => false
     case TypeConstructor.Arrow(_) => false
     case TypeConstructor.RecordRowEmpty => false
     case TypeConstructor.RecordRowExtend(_) => false
@@ -707,7 +710,7 @@ object SemanticTokensProvider {
     case TypeConstructor.CaseUnion(_) => false
     case TypeConstructor.CaseIntersection(_) => false
     case TypeConstructor.CaseSet(_, _) => false
-    case TypeConstructor.Error(_) => false
+    case TypeConstructor.Error(_, _) => false
   }
 
   /**

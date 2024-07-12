@@ -23,9 +23,10 @@ import java.lang.reflect.Method
 
 object ReducedAst {
 
-  val empty: Root = Root(Map.empty, Map.empty, Set.empty, List.empty, None, Set.empty, Map.empty)
+  val empty: Root = Root(Map.empty, Map.empty, Map.empty, Set.empty, List.empty, None, Set.empty, Map.empty)
 
   case class Root(defs: Map[Symbol.DefnSym, Def],
+                  structs: Map[Symbol.StructSym, Struct],
                   effects: Map[Symbol.EffectSym, Effect],
                   types: Set[MonoType],
                   anonClasses: List[AnonClass],
@@ -37,6 +38,9 @@ object ReducedAst {
 
   }
 
+  /**
+    * pcPoints is initialized by [[ca.uwaterloo.flix.language.phase.Reducer]].
+    */
   case class Def(ann: Ast.Annotations, mod: Ast.Modifiers, sym: Symbol.DefnSym, cparams: List[FormalParam], fparams: List[FormalParam], lparams: List[LocalParam], pcPoints: Int, expr: Expr, tpe: MonoType, unboxedType: UnboxedType, purity: Purity, loc: SourceLocation) {
     var method: Method = _
     val arrowType: MonoType.Arrow = MonoType.Arrow(fparams.map(_.tpe), tpe)
@@ -48,6 +52,8 @@ object ReducedAst {
   case class Effect(ann: Ast.Annotations, mod: Ast.Modifiers, sym: Symbol.EffectSym, ops: List[Op], loc: SourceLocation)
 
   case class Op(sym: Symbol.OpSym, ann: Ast.Annotations, mod: Ast.Modifiers, fparams: List[FormalParam], tpe: MonoType, purity: Purity, loc: SourceLocation)
+
+  case class Struct(doc: Ast.Doc, ann: Ast.Annotations, mod: Ast.Modifiers, sym: Symbol.StructSym, fields: Map[Name.StructField, StructField], tpe: Type, loc: SourceLocation)
 
   sealed trait Expr {
     def tpe: MonoType
@@ -69,11 +75,11 @@ object ReducedAst {
 
     case class ApplyAtomic(op: AtomicOp, exps: List[Expr], tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
 
-    case class ApplyClo(exp: Expr, exps: List[Expr], ct: Ast.CallType, tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
+    case class ApplyClo(exp: Expr, exps: List[Expr], ct: Ast.ExpPosition, tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
 
-    case class ApplyDef(sym: Symbol.DefnSym, exps: List[Expr], ct: Ast.CallType, tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
+    case class ApplyDef(sym: Symbol.DefnSym, exps: List[Expr], ct: Ast.ExpPosition, tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
 
-    case class ApplySelfTail(sym: Symbol.DefnSym, formals: List[FormalParam], actuals: List[Expr], tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
+    case class ApplySelfTail(sym: Symbol.DefnSym, actuals: List[Expr], tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
 
     case class IfThenElse(exp1: Expr, exp2: Expr, exp3: Expr, tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
 
@@ -91,13 +97,15 @@ object ReducedAst {
 
     case class TryCatch(exp: Expr, rules: List[CatchRule], tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
 
-    case class TryWith(exp: Expr, effUse: Ast.EffectSymUse, rules: List[HandlerRule], tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
+    case class TryWith(exp: Expr, effUse: Ast.EffectSymUse, rules: List[HandlerRule], ct: Ast.ExpPosition, tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
 
     case class Do(op: Ast.OpSymUse, exps: List[Expr], tpe: MonoType, purity: Purity, loc: SourceLocation) extends Expr
 
     case class NewObject(name: String, clazz: java.lang.Class[_], tpe: MonoType, purity: Purity, methods: List[JvmMethod], loc: SourceLocation) extends Expr
 
   }
+
+  case class StructField(sym: Symbol.StructFieldSym, tpe: Type, sc: Scheme, loc: SourceLocation)
 
   case class AnonClass(name: String, clazz: java.lang.Class[_], tpe: MonoType, methods: List[JvmMethod], loc: SourceLocation)
 

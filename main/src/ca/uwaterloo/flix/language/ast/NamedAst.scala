@@ -18,6 +18,7 @@ package ca.uwaterloo.flix.language.ast
 
 import ca.uwaterloo.flix.language.CompilationMessage
 import ca.uwaterloo.flix.language.ast.Ast.{Denotation, Source}
+import ca.uwaterloo.flix.language.ast.shared.Fixity
 import ca.uwaterloo.flix.util.collection.MultiMap
 
 object NamedAst {
@@ -38,9 +39,9 @@ object NamedAst {
 
     case class Namespace(sym: Symbol.ModuleSym, usesAndImports: List[UseOrImport], decls: List[Declaration], loc: SourceLocation) extends Declaration
 
-    case class Class(doc: Ast.Doc, ann: Ast.Annotations, mod: Ast.Modifiers, sym: Symbol.ClassSym, tparam: TypeParam, superClasses: List[TypeConstraint], assocs: List[Declaration.AssocTypeSig], sigs: List[Declaration.Sig], laws: List[Declaration.Def], loc: SourceLocation) extends Declaration
+    case class Trait(doc: Ast.Doc, ann: Ast.Annotations, mod: Ast.Modifiers, sym: Symbol.TraitSym, tparam: TypeParam, superTraits: List[TypeConstraint], assocs: List[Declaration.AssocTypeSig], sigs: List[Declaration.Sig], laws: List[Declaration.Def], loc: SourceLocation) extends Declaration
 
-    case class Instance(doc: Ast.Doc, ann: Ast.Annotations, mod: Ast.Modifiers, clazz: Name.QName, tparams: TypeParams, tpe: Type, tconstrs: List[TypeConstraint], assocs: List[Declaration.AssocTypeDef], defs: List[Declaration.Def], ns: List[String], loc: SourceLocation) extends Declaration
+    case class Instance(doc: Ast.Doc, ann: Ast.Annotations, mod: Ast.Modifiers, trt: Name.QName, tparams: TypeParams, tpe: Type, tconstrs: List[TypeConstraint], assocs: List[Declaration.AssocTypeDef], defs: List[Declaration.Def], ns: List[String], loc: SourceLocation) extends Declaration
 
     case class Sig(sym: Symbol.SigSym, spec: Spec, exp: Option[Expr]) extends Declaration
 
@@ -48,11 +49,13 @@ object NamedAst {
 
     case class Enum(doc: Ast.Doc, ann: Ast.Annotations, mod: Ast.Modifiers, sym: Symbol.EnumSym, tparams: TypeParams, derives: Derivations, cases: List[Declaration.Case], loc: SourceLocation) extends Declaration
 
+    case class Struct(doc: Ast.Doc, ann: Ast.Annotations, mod: Ast.Modifiers, sym: Symbol.StructSym, tparams: TypeParams, fields: List[Declaration.StructField], loc: SourceLocation) extends Declaration
+
     case class RestrictableEnum(doc: Ast.Doc, ann: Ast.Annotations, mod: Ast.Modifiers, sym: Symbol.RestrictableEnumSym, index: TypeParam, tparams: TypeParams, derives: Derivations, cases: List[Declaration.RestrictableCase], loc: SourceLocation) extends Declaration
 
     case class TypeAlias(doc: Ast.Doc, ann: Ast.Annotations, mod: Ast.Modifiers, sym: Symbol.TypeAliasSym, tparams: TypeParams, tpe: Type, loc: SourceLocation) extends Declaration
 
-    case class AssocTypeSig(doc: Ast.Doc, mod: Ast.Modifiers, sym: Symbol.AssocTypeSym, tparam: TypeParam, kind: Kind, loc: SourceLocation) extends Declaration
+    case class AssocTypeSig(doc: Ast.Doc, mod: Ast.Modifiers, sym: Symbol.AssocTypeSym, tparam: TypeParam, kind: Kind, tpe: Option[Type], loc: SourceLocation) extends Declaration
 
     case class AssocTypeDef(doc: Ast.Doc, mod: Ast.Modifiers, ident: Name.Ident, arg: Type, tpe: Type, loc: SourceLocation) extends Declaration
 
@@ -61,6 +64,8 @@ object NamedAst {
     case class Op(sym: Symbol.OpSym, spec: Spec) extends Declaration
 
     case class Case(sym: Symbol.CaseSym, tpe: Type, loc: SourceLocation) extends Declaration
+
+    case class StructField(sym: Symbol.StructFieldSym, tpe: Type, loc: SourceLocation) extends Declaration
 
     case class RestrictableCase(sym: Symbol.RestrictableCaseSym, tpe: Type, loc: SourceLocation) extends Declaration
   }
@@ -105,9 +110,9 @@ object NamedAst {
 
     case class Lambda(fparam: FormalParam, exp: Expr, loc: SourceLocation) extends Expr
 
-    case class Unary(sop: SemanticOp, exp: Expr, loc: SourceLocation) extends Expr
+    case class Unary(sop: SemanticOp.UnaryOp, exp: Expr, loc: SourceLocation) extends Expr
 
-    case class Binary(sop: SemanticOp, exp1: Expr, exp2: Expr, loc: SourceLocation) extends Expr
+    case class Binary(sop: SemanticOp.BinaryOp, exp1: Expr, exp2: Expr, loc: SourceLocation) extends Expr
 
     case class IfThenElse(exp1: Expr, exp2: Expr, exp3: Expr, loc: SourceLocation) extends Expr
 
@@ -149,6 +154,12 @@ object NamedAst {
 
     case class ArrayLength(base: Expr, loc: SourceLocation) extends Expr
 
+    case class StructNew(name: Symbol.StructSym, exps: List[(Symbol.StructFieldSym, Expr)], region: Expr, loc: SourceLocation) extends Expr
+
+    case class StructGet(structsym: Symbol.StructSym, exp: Expr, name: Name.Label, loc: SourceLocation) extends Expr
+
+    case class StructPut(structsym: Symbol.StructSym, exp1: Expr, name: Name.Label, exp2: Expr, loc: SourceLocation) extends Expr
+
     case class VectorLit(exps: List[Expr], loc: SourceLocation) extends Expr
 
     case class VectorLoad(exp1: Expr, exp2: Expr, loc: SourceLocation) extends Expr
@@ -163,7 +174,7 @@ object NamedAst {
 
     case class Ascribe(exp: Expr, expectedType: Option[Type], expectedEff: Option[Type], loc: SourceLocation) extends Expr
 
-    case class InstanceOf(exp: Expr, className: String, loc: SourceLocation) extends Expr
+    case class InstanceOf(exp: Expr, className: Name.Ident, loc: SourceLocation) extends Expr
 
     case class CheckedCast(cast: Ast.CheckedCastType, exp: Expr, loc: SourceLocation) extends Expr
 
@@ -177,13 +188,19 @@ object NamedAst {
 
     case class TryWith(exp: Expr, eff: Name.QName, rules: List[HandlerRule], loc: SourceLocation) extends Expr
 
-    case class Do(op: Name.QName, args: List[Expr], loc: SourceLocation) extends Expr
+    case class Do(op: Name.QName, exps: List[Expr], loc: SourceLocation) extends Expr
 
-    case class InvokeConstructor(className: String, args: List[Expr], sig: List[Type], loc: SourceLocation) extends Expr
+    case class InvokeConstructor2(clazzName: Name.Ident, exps: List[Expr], loc: SourceLocation) extends Expr
 
-    case class InvokeMethod(className: String, methodName: String, exp: Expr, args: List[Expr], sig: List[Type], retTpe: Type, loc: SourceLocation) extends Expr
+    case class InvokeMethod2(exp: Expr, methodName: Name.Ident, exps: List[Expr], loc: SourceLocation) extends Expr
 
-    case class InvokeStaticMethod(className: String, methodName: String, args: List[Expr], sig: List[Type], retTpe: Type, loc: SourceLocation) extends Expr
+    case class InvokeStaticMethod2(clazzName: Name.Ident, methodName: Name.Ident, exps: List[Expr], loc: SourceLocation) extends Expr
+
+    case class InvokeConstructor(className: String, exps: List[Expr], sig: List[Type], loc: SourceLocation) extends Expr
+
+    case class InvokeMethod(className: String, methodName: String, exp: Expr, exps: List[Expr], sig: List[Type], retTpe: Type, loc: SourceLocation) extends Expr
+
+    case class InvokeStaticMethod(className: String, methodName: String, exps: List[Expr], sig: List[Type], retTpe: Type, loc: SourceLocation) extends Expr
 
     case class GetField(className: String, fieldName: String, exp: Expr, loc: SourceLocation) extends Expr
 
@@ -289,7 +306,7 @@ object NamedAst {
 
     object Body {
 
-      case class Atom(pred: Name.Pred, den: Denotation, polarity: Ast.Polarity, fixity: Ast.Fixity, terms: List[Pattern], loc: SourceLocation) extends Predicate.Body
+      case class Atom(pred: Name.Pred, den: Denotation, polarity: Ast.Polarity, fixity: Fixity, terms: List[Pattern], loc: SourceLocation) extends Predicate.Body
 
       case class Functional(idents: List[Name.Ident], exp: Expr, loc: SourceLocation) extends Predicate.Body
 
@@ -359,8 +376,9 @@ object NamedAst {
 
     case class CaseComplement(tpe: Type, loc: SourceLocation) extends Type
 
-
     case class Ascribe(tpe: Type, kind: Kind, loc: SourceLocation) extends Type
+
+    case class Error(loc: SourceLocation) extends Type
 
   }
 
@@ -436,12 +454,12 @@ object NamedAst {
 
   }
 
-  case class TypeConstraint(clazz: Name.QName, tpe: Type, loc: SourceLocation)
+  case class TypeConstraint(trt: Name.QName, tpe: Type, loc: SourceLocation)
 
   case class EqualityConstraint(qname: Name.QName, tpe1: Type, tpe2: Type, loc: SourceLocation)
 
   case class ParYieldFragment(pat: Pattern, exp: Expr, loc: SourceLocation)
 
-  case class Derivations(classes: List[Name.QName], loc: SourceLocation)
+  case class Derivations(traits: List[Name.QName], loc: SourceLocation)
 
 }

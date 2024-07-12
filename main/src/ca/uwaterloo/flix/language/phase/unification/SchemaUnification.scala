@@ -47,9 +47,9 @@ object SchemaUnification {
           }
       }
 
-    case (Type.Cst(TypeConstructor.Error(_), _), _) => Ok((Substitution.empty))
+    case (Type.Cst(TypeConstructor.Error(_, _), _), _) => Ok((Substitution.empty))
 
-    case (_, Type.Cst(TypeConstructor.Error(_), _)) => Ok((Substitution.empty))
+    case (_, Type.Cst(TypeConstructor.Error(_, _), _)) => Ok((Substitution.empty))
 
     case _ => throw InternalCompilerException(s"unexpected types: ($tpe1), ($tpe2)", tpe1.loc)
   }
@@ -83,7 +83,7 @@ object SchemaUnification {
         } else {
           // Introduce a fresh type variable to represent one more level of the row.
           // We use the same level as the type variable to maintain consistency.
-          val restRow2 = Type.freshVar(Kind.SchemaRow, tvar.loc)(tvar.sym.level, flix)
+          val restRow2 = Type.freshVar(Kind.SchemaRow, tvar.loc)
           val type2 = Type.mkSchemaRowExtend(label1, fieldType1, restRow2, tvar.loc)
           val subst = Substitution.singleton(tv.sym, type2)
           Ok((subst, restRow2))

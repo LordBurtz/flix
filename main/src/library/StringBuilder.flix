@@ -20,13 +20,13 @@
 enum StringBuilder[_: Region](##java.lang.StringBuilder)
 
 mod StringBuilder {
+    import java.lang.{StringBuilder => JStringBuilder};
 
     ///
     /// Returns a new mutable StringBuilder.
     ///
-    pub def new(_: Region[r]): StringBuilder[r] \ r =
-        import new java.lang.StringBuilder(): ##java.lang.StringBuilder \ r as newStringBuilder;
-        StringBuilder(newStringBuilder())
+    pub def empty(_: Region[r]): StringBuilder[r] \ r =
+        StringBuilder(checked_ecast(unsafe new JStringBuilder()))
 
     ///
     /// Append `x` to the StringBuilder `sb`.
@@ -83,7 +83,7 @@ mod StringBuilder {
     ///
     /// Appends `f(x)` for each x in the foldable collection `t` to the string builder `sb`.
     ///
-    pub def appendLinesWith(f: a -> String \ ef, t: t[a], sb: StringBuilder[r]): Unit \ { ef, r } with Foldable[t] =
+    pub def appendLinesWith(f: a -> String \ ef, t: t[a], sb: StringBuilder[r]): Unit \ (ef + r + Foldable.Aef[t]) with Foldable[t] =
         Foldable.forEach(x -> appendLineWith!(f, x, sb), t)
 
     ///
@@ -128,6 +128,14 @@ mod StringBuilder {
         length(msb)
 
     ///
+    /// Sets the length of the StringBuilder `sb`.
+    ///
+    pub def setLength!(newLength: Int32, sb: StringBuilder[r]): Unit \ r =
+        import java.lang.StringBuilder.setLength(Int32): Unit \ r as setLength;
+        let StringBuilder.StringBuilder(msb) = sb;
+        setLength(msb, newLength)
+
+    ///
     /// Convert the StringBuilder `sb` to a string.
     ///
     pub def toString(sb: StringBuilder[r]): String \ r =
@@ -136,4 +144,3 @@ mod StringBuilder {
         toString(msb)
 
 }
-

@@ -18,16 +18,14 @@ package ca.uwaterloo.flix.language.phase
 
 import ca.uwaterloo.flix.api.Flix
 import ca.uwaterloo.flix.language.ast.Ast.BoundBy
-import ca.uwaterloo.flix.language.ast.{Ast, AtomicOp, Level, LiftedAst, MonoType, Purity, SimplifiedAst, Symbol}
+import ca.uwaterloo.flix.language.ast.{Ast, AtomicOp, LiftedAst, MonoType, Purity, SimplifiedAst, Symbol}
+import ca.uwaterloo.flix.language.dbg.AstPrinter._
 import ca.uwaterloo.flix.util.{InternalCompilerException, ParOps}
 
-import scala.jdk.CollectionConverters._
 import java.util.concurrent.ConcurrentLinkedQueue
+import scala.jdk.CollectionConverters._
 
 object LambdaLift {
-
-  // Post type inference, level is irrelevant.
-  private implicit val DefaultLevel: Level = Level.Default
 
   /**
     * Performs lambda lifting on the given AST `root`.
@@ -43,7 +41,9 @@ object LambdaLift {
       case (macc, (sym, defn)) => macc + (sym -> defn)
     }
 
-    LiftedAst.Root(newDefs, effects, root.entryPoint, root.reachable, root.sources)
+    val structs = Map.empty[Symbol.StructSym, LiftedAst.Struct]
+
+    LiftedAst.Root(newDefs, structs, effects, root.entryPoint, root.reachable, root.sources)
   }
 
   private def visitDef(def0: SimplifiedAst.Def)(implicit ctx: SharedContext, flix: Flix): LiftedAst.Def = def0 match {
@@ -118,17 +118,22 @@ object LambdaLift {
     case SimplifiedAst.Expr.ApplyClo(exp, exps, tpe, purity, loc) =>
       val e = visitExp(exp)
       val es = exps map visitExp
-      LiftedAst.Expr.ApplyClo(e, es, Ast.CallType.NonTailCall, tpe, purity, loc)
+      LiftedAst.Expr.ApplyClo(e, es, tpe, purity, loc)
 
     case SimplifiedAst.Expr.ApplyDef(sym, exps, tpe, purity, loc) =>
       val es = exps map visitExp
-      LiftedAst.Expr.ApplyDef(sym, es, Ast.CallType.NonTailCall, tpe, purity, loc)
+      LiftedAst.Expr.ApplyDef(sym, es, tpe, purity, loc)
 
     case SimplifiedAst.Expr.IfThenElse(exp1, exp2, exp3, tpe, purity, loc) =>
       val e1 = visitExp(exp1)
       val e2 = visitExp(exp2)
       val e3 = visitExp(exp3)
       LiftedAst.Expr.IfThenElse(e1, e2, e3, tpe, purity, loc)
+
+    case SimplifiedAst.Expr.Stm(exp1, exp2, tpe, purity, loc) =>
+      val e1 = visitExp(exp1)
+      val e2 = visitExp(exp2)
+      LiftedAst.Expr.Stm(e1, e2, tpe, purity, loc)
 
     case SimplifiedAst.Expr.Branch(exp, branches, tpe, purity, loc) =>
       val e = visitExp(exp)

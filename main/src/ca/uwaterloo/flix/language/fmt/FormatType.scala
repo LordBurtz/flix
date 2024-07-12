@@ -52,7 +52,7 @@ object FormatType {
     // Compute a substitution that maps the first flexible variable to id 1 and so forth.
     val m = flexibleVars.zipWithIndex.map {
       case (tvar@Type.Var(sym, loc), index) =>
-        sym -> (Type.Var(new Symbol.KindedTypeVarSym(index, sym.text, sym.kind, sym.isRegion, sym.level, loc), loc): Type)
+        sym -> (Type.Var(new Symbol.KindedTypeVarSym(index, sym.text, sym.kind, sym.isRegion, loc), loc): Type)
     }
     val s = Substitution(m.toMap)
 
@@ -65,7 +65,7 @@ object FormatType {
     */
   def formatTypeWithOptions(tpe: Type, fmt: FormatOptions): String = {
     try {
-      format(SimpleType.fromWellKindedType(tpe)(fmt))(fmt)
+      format(SimpleType.fromWellKindedType(tpe))(fmt)
     } catch {
       case _: Throwable => "ERR_UNABLE_TO_FORMAT_TYPE"
     }
@@ -160,6 +160,7 @@ object FormatType {
       // delimited types
       case SimpleType.Hole => true
       case SimpleType.Void => true
+      case SimpleType.AnyType => true
       case SimpleType.Unit => true
       case SimpleType.Null => true
       case SimpleType.Bool => true
@@ -204,6 +205,7 @@ object FormatType {
       case SimpleType.Apply(_, _) => true
       case SimpleType.Var(_, _, _, _) => true
       case SimpleType.Tuple(_) => true
+      case SimpleType.MethodReturnType(_) => true
       case SimpleType.Union(_) => true
       case SimpleType.Error => true
     }
@@ -225,6 +227,7 @@ object FormatType {
     def visit(tpe0: SimpleType, mode: Mode): String = tpe0 match {
       case SimpleType.Hole => "?"
       case SimpleType.Void => "Void"
+      case SimpleType.AnyType => "AnyType"
       case SimpleType.Unit => "Unit"
       case SimpleType.Null => "Null"
       case SimpleType.Bool => "Bool"
@@ -335,8 +338,10 @@ object FormatType {
           case Kind.RecordRow => "r" + id
           case Kind.SchemaRow => "s" + id
           case Kind.Predicate => "'" + id.toString
+          case Kind.JvmConstructorOrMethod => "j" + id.toString
           case Kind.CaseSet(_) => "c" + id.toString
           case Kind.Arrow(_, _) => "'" + id.toString
+          case Kind.Error => "err" + id.toString
         }
         val suffix = if (isRegion) {
           "!"
@@ -354,6 +359,10 @@ object FormatType {
 
       case SimpleType.Tuple(elms) =>
         elms.map(visit(_, Mode.Type)).mkString("(", ", ", ")")
+
+      case SimpleType.MethodReturnType(tpe) =>
+        val arg = visit(tpe, Mode.Type)
+        "MethodReturnType(" + arg + ")"
 
       case SimpleType.Error => "Error"
 

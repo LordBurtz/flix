@@ -5,27 +5,26 @@
 pub enum Random(##java.util.Random)
 
 mod Random {
+    import java.util.{Random => JRandom};
 
     ///
     /// Returns a fresh random number generator.
     ///
-    pub def new(): Random \ IO =
-        import new java.util.Random(): ##java.util.Random \ IO as newRandom;
-        Random(newRandom())
+    pub def fresh(): Random \ IO =
+        Random(new JRandom())
 
     ///
     /// Returns a fresh random number generator initialized with the given seed `s`.
     ///
-    pub def newWithSeed(s: Int64): Random \ IO =
-        import new java.util.Random(Int64): ##java.util.Random \ IO as newRandom;
-        Random(newRandom(s))
+    pub def freshWithSeed(s: Int64): Random \ IO =
+        Random(new JRandom(s))
 
     ///
     /// Returns a pseudorandom element from the given array `a` using the random number generator `r`.
     ///
     /// Returns `None` if the given array `a` is empty.
     ///
-    pub def choose(r: Random, a: Array[a, r]): Option[a] \ { IO, r } =
+    pub def oneOf(r: Random, a: Array[a, r]): Option[a] \ { IO, r } =
         if (Array.length(a) == 0) {
             None
         } else {

@@ -96,10 +96,15 @@ pub def ||>(x: (a, b), f: a -> (b -> c \ ef)): c \ ef = f(fst(x), snd(x))
 pub def !>( x: a, f: a -> Unit \ ef): a \ ef = f(x); x
 
 ///
+/// Coerces the given value `x`.
+///
+pub def coerce(x: t): Coerce.Out[t] with Coerce[t] = Coerce.coerce(x)
+
+///
 /// Converts `x` to a string and prints it to standard out followed by a new line.
 ///
 pub def println(x: a): Unit \ IO with ToString[a] =
-    import static get java.lang.System.out: ##java.io.PrintStream \ IO as getOut;
+    import static java_get_field java.lang.System.out: ##java.io.PrintStream \ IO as getOut;
     import java.io.PrintStream.println(String): Unit \ IO;
     x |> ToString.toString |> println(getOut())
 
@@ -109,34 +114,10 @@ pub def println(x: a): Unit \ IO with ToString[a] =
 pub def touch(_: Region[r]): Unit \ r = checked_ecast(())
 
 ///
-/// Prints the stringified representation of `x`.
-///
-/// WARNING: The debug function is pure hence if the
-/// result is unused it may be removed by the compiler!
-///
-def debug(x: a): a = masked_cast(Debug.debugWithPrefix("", x))
-
-///
-/// Prints the stringified representation of `x`.
-///
-/// WARNING: The debug function is pure hence if the
-/// result is unused it may be removed by the compiler!
-///
-def debug!(x: a): a = masked_cast(Debug.debugWithPrefix("", x))
-
-///
-/// Prints the stringified representation of `x`.
-///
-/// WARNING: The debug function is pure hence if the
-/// result is unused it may be removed by the compiler!
-///
-def debug!!(x: a): a = masked_cast(Debug.debugWithPrefix("", x))
-
-///
 /// Crashes the current process with the given message `m`.
 ///
 pub def bug!(m: String): a = masked_cast({
-    import static get java.lang.System.err: ##java.io.PrintStream \ {} as getErr;
+    import static java_get_field java.lang.System.err: ##java.io.PrintStream \ {} as getErr;
     import java.io.PrintStream.println(String): Unit \ IO;
     import java.lang.String.repeat(Int32): ##java.lang.String \ {};
     let prt = println(getErr());
@@ -161,7 +142,7 @@ pub def unreachable!(): a = bug!("Reached unreachable expression.")
 pub def printUnlessUnit(x: a): Unit \ IO with ToString[a] = {
     typematch x {
         case _: Unit => ()
-        case _: _ => println(x)
+        case _: _    => println(x)
     }
 }
 
@@ -181,34 +162,34 @@ pub enum Purity3[a: Type, b: Type, c: Type, d: Type, ef: Eff] {
 }
 
 ///
-/// Returns `Purity.Pure(g) if `f` has no effects.
+/// Returns `Purity.Pure(g)` if `f` has no effects.
 /// Returns `Purity.Impure(g)` otherwise.
 /// The function `g` can then be used in a context that requires
 /// it to be pure.
 ///
 pub def purityOf(f: a -> b \ ef): Purity[a, b, ef] = typematch f {
-    case g: a -> b \ Pure => Purity.Pure(g)
-    case _: _             => Purity.Impure(f)
+    case g: a -> b \ {} => Purity.Pure(g)
+    case _: _           => Purity.Impure(f)
 }
 
 ///
-/// Returns `Purity2.Pure(g) if `f` has no effects.
+/// Returns `Purity2.Pure(g)` if `f` has no effects.
 /// Returns `Purity2.Impure(g)` otherwise.
 /// The function `g` can then be used in a context that requires
 /// it to be pure.
 ///
 pub def purityOf2(f: a -> b -> c \ ef): Purity2[a, b, c, ef] = typematch f {
-    case g: a -> b -> c \ Pure => Purity2.Pure(g)
-    case _: _                  => Purity2.Impure(f)
+    case g: a -> b -> c \ {} => Purity2.Pure(g)
+    case _: _                => Purity2.Impure(f)
 }
 
 ///
-/// Returns `Purity3.Pure(g) if `f` has no effects.
+/// Returns `Purity3.Pure(g)` if `f` has no effects.
 /// Returns `Purity3.Impure(g)` otherwise.
 /// The function `g` can then be used in a context that requires
 /// it to be pure.
 ///
 pub def purityOf3(f: a -> b -> c -> d \ ef): Purity3[a, b, c, d, ef] = typematch f {
-    case g: a -> b -> c -> d \ Pure => Purity3.Pure(g)
-    case _: _                       => Purity3.Impure(f)
+    case g: a -> b -> c -> d \ {} => Purity3.Pure(g)
+    case _: _                     => Purity3.Impure(f)
 }

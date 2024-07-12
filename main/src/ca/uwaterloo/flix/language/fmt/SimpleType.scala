@@ -16,6 +16,8 @@
 package ca.uwaterloo.flix.language.fmt
 
 import ca.uwaterloo.flix.language.ast._
+import ca.uwaterloo.flix.language.errors.KindError
+import ca.uwaterloo.flix.language.fmt
 import ca.uwaterloo.flix.util.InternalCompilerException
 
 /**
@@ -42,6 +44,8 @@ object SimpleType {
   /////////////
 
   case object Void extends SimpleType
+
+  case object AnyType extends SimpleType
 
   case object Unit extends SimpleType
 
@@ -262,9 +266,14 @@ object SimpleType {
   case class Tuple(elms: List[SimpleType]) extends SimpleType
 
   /**
-   * An error type.
+   * A method return type.
    */
-   case object Error extends SimpleType
+  case class MethodReturnType(tpe: SimpleType) extends SimpleType
+
+  /**
+    * An error type.
+    */
+  case object Error extends SimpleType
 
   /////////
   // Fields
@@ -300,7 +309,7 @@ object SimpleType {
   /**
     * Creates a simple type from the well-kinded type `t`.
     */
-  def fromWellKindedType(t0: Type)(implicit fmt: FormatOptions): SimpleType = {
+  def fromWellKindedType(t0: Type): SimpleType = {
 
     def visit(t: Type): SimpleType = t.baseType match {
       case Type.Var(sym, _) =>
@@ -311,6 +320,7 @@ object SimpleType {
         mkApply(Name(cst.sym.name), (arg :: t.typeArguments).map(visit))
       case Type.Cst(tc, _) => tc match {
         case TypeConstructor.Void => Void
+        case TypeConstructor.AnyType => AnyType
         case TypeConstructor.Unit => Unit
         case TypeConstructor.Null => Null
         case TypeConstructor.Bool => Bool
@@ -336,7 +346,7 @@ object SimpleType {
               List.fill(arity - 2)(Hole).foldRight(lastArrow)(PureArrow)
 
             // Case 2: Pure function.
-            case eff :: tpes if eff == Pure || fmt.ignorePur =>
+            case eff :: tpes if eff == Pure =>
               // NB: safe to reduce because arity is always at least 2
               tpes.padTo(arity, Hole).reduceRight(PureArrow)
 
@@ -419,8 +429,17 @@ object SimpleType {
         case TypeConstructor.Receiver => mkApply(Receiver, t.typeArguments.map(visit))
         case TypeConstructor.Lazy => mkApply(Lazy, t.typeArguments.map(visit))
         case TypeConstructor.Enum(sym, _) => mkApply(Name(sym.name), t.typeArguments.map(visit))
+        case TypeConstructor.Struct(sym, _) => mkApply(Name(sym.name), t.typeArguments.map(visit))
         case TypeConstructor.RestrictableEnum(sym, _) => mkApply(Name(sym.name), t.typeArguments.map(visit))
         case TypeConstructor.Native(clazz) => Name(clazz.getName)
+        case TypeConstructor.JvmConstructor(constructor) => Name(constructor.getName)
+        case TypeConstructor.JvmMethod(method) => Name(method.getName)
+        case TypeConstructor.MethodReturnType =>
+          t.typeArguments.size match {
+            case 0 => SimpleType.MethodReturnType(SimpleType.Hole)
+            case 1 => SimpleType.MethodReturnType(fromWellKindedType(t.typeArguments.head))
+            case _ => throw InternalCompilerException(s"Unexpected wrong kinded type $t", t.loc)
+          }
         case TypeConstructor.Ref => mkApply(Ref, t.typeArguments.map(visit))
         case TypeConstructor.Tuple(l) =>
           val tpes = t.typeArguments.map(visit).padTo(l, Hole)
@@ -543,7 +562,7 @@ object SimpleType {
         case TypeConstructor.Effect(sym) => mkApply(SimpleType.Name(sym.name), t.typeArguments.map(visit))
         case TypeConstructor.RegionToStar => mkApply(Region, t.typeArguments.map(visit))
 
-        case TypeConstructor.Error(_) => SimpleType.Error
+        case TypeConstructor.Error(_, _) => SimpleType.Error
       }
     }
 
@@ -570,7 +589,7 @@ object SimpleType {
   /**
     * Transforms the given type, assuming it is a record row.
     */
-  private def fromRecordRow(row0: Type)(implicit fmt: FormatOptions): SimpleType = {
+  private def fromRecordRow(row0: Type): SimpleType = {
     def visit(row: Type): SimpleType = row match {
       // Case 1: A fully applied record row.
       case Type.Apply(Type.Apply(Type.Cst(TypeConstructor.RecordRowExtend(name), _), tpe, _), rest, _) =>
@@ -600,7 +619,7 @@ object SimpleType {
   /**
     * Transforms the given type, assuming it is a schema row.
     */
-  private def fromSchemaRow(row0: Type)(implicit fmt: FormatOptions): SimpleType = {
+  private def fromSchemaRow(row0: Type): SimpleType = {
     def visit(row: Type): SimpleType = row match {
       // Case 1: A fully applied record row.
       case Type.Apply(Type.Apply(Type.Cst(TypeConstructor.SchemaRowExtend(name), _), tpe, _), rest, _) =>

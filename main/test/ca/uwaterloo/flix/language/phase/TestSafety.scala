@@ -18,13 +18,42 @@ package ca.uwaterloo.flix.language.phase
 
 import ca.uwaterloo.flix.TestUtils
 import ca.uwaterloo.flix.language.errors.SafetyError
-import ca.uwaterloo.flix.language.errors.SafetyError.{IllegalNegativelyBoundWildCard, IllegalNonPositivelyBoundVar, IllegalRelationalUseOfLatticeVar, IllegalPatternInBodyAtom}
+import ca.uwaterloo.flix.language.errors.SafetyError.{IllegalCatchType, IllegalNegativelyBoundWildCard, IllegalNonPositivelyBoundVar, IllegalPatternInBodyAtom, IllegalRelationalUseOfLatticeVar}
 import ca.uwaterloo.flix.util.Options
 import org.scalatest.funsuite.AnyFunSuite
 
 class TestSafety extends AnyFunSuite with TestUtils {
 
   val DefaultOptions: Options = Options.TestWithLibMin
+
+  test("IllegalCatchType.01") {
+    val input =
+      """
+        |pub def f(): String =
+        |    try {
+        |        "abc"
+        |    } catch {
+        |        case _s: ##java.lang.Object => "fail"
+        |    }
+      """.stripMargin
+    val result = compile(input, Options.DefaultTest)
+    expectError[IllegalCatchType](result)
+  }
+
+  test("IllegalCatchType.02") {
+    val input =
+      """
+        |pub def f(): String =
+        |    try {
+        |        "abc"
+        |    } catch {
+        |        case _e1: ##java.lang.Exception => "ok"
+        |        case _e2: ##java.lang.String => "not ok"
+        |    }
+      """.stripMargin
+    val result = compile(input, Options.DefaultTest)
+    expectError[IllegalCatchType](result)
+  }
 
   test("UnexpectedBodyAtomPattern.01") {
     val input =
@@ -193,7 +222,7 @@ class TestSafety extends AnyFunSuite with TestUtils {
     val input =
       """
         |pub def f(): #{ A(Int32), B(Int32; Int32) } = #{
-        |    A(x: Int32) :- B(12; x).
+        |    A((x: Int32)) :- B(12; x).
         |}
       """.stripMargin
     val result = compile(input, Options.TestWithLibAll)
@@ -249,7 +278,7 @@ class TestSafety extends AnyFunSuite with TestUtils {
       """
         |def f(): ##java.lang.Runnable \ IO =
         |  new ##java.lang.Runnable {
-        |    def run(): Unit \ IO = ()
+        |    def run(): Unit = ()
         |  }
       """.stripMargin
     val result = compile(input, Options.TestWithLibMin)
@@ -261,7 +290,7 @@ class TestSafety extends AnyFunSuite with TestUtils {
       """
         |def f(): ##java.lang.Runnable \ IO =
         |  new ##java.lang.Runnable {
-        |    def run(_this: Int32): Unit \ IO = ()
+        |    def run(_this: Int32): Unit = ()
         |  }
       """.stripMargin
     val result = compile(input, Options.TestWithLibMin)
@@ -282,8 +311,8 @@ class TestSafety extends AnyFunSuite with TestUtils {
       """
         |def f(): ##java.lang.Runnable \ IO =
         |  new ##java.lang.Runnable {
-        |    def run(_this: ##java.lang.Runnable): Unit \ IO = ()
-        |    def anExtraMethod(_this: ##java.lang.Runnable): Unit \ IO = ()
+        |    def run(_this: ##java.lang.Runnable): Unit = ()
+        |    def anExtraMethod(_this: ##java.lang.Runnable): Unit = ()
         |  }
       """.stripMargin
     val result = compile(input, Options.TestWithLibMin)
@@ -444,7 +473,7 @@ class TestSafety extends AnyFunSuite with TestUtils {
     val input =
       """
         |def f(): ##java.io.Serializable \ IO =
-        |    import new java.lang.Object(): ##java.lang.Object as mkObj;
+        |    import java_new java.lang.Object(): ##java.lang.Object as mkObj;
         |    checked_cast(mkObj())
       """.stripMargin
     val result = compile(input, Options.TestWithLibMin)
@@ -455,7 +484,7 @@ class TestSafety extends AnyFunSuite with TestUtils {
     val input =
       """
         |def f(): ##java.lang.Boolean \ IO =
-        |    import new java.lang.Object(): ##java.lang.Object as mkObj;
+        |    import java_new java.lang.Object(): ##java.lang.Object as mkObj;
         |    checked_cast(mkObj())
       """.stripMargin
     val result = compile(input, Options.TestWithLibMin)
@@ -540,7 +569,7 @@ class TestSafety extends AnyFunSuite with TestUtils {
     val input =
       """
         |def f(): ##java.lang.String \ IO =
-        |    import new java.lang.Object(): ##java.lang.Object as mkObj;
+        |    import java_new java.lang.Object(): ##java.lang.Object as mkObj;
         |    checked_cast(mkObj())
       """.stripMargin
     val result = compile(input, Options.TestWithLibMin)
@@ -551,7 +580,7 @@ class TestSafety extends AnyFunSuite with TestUtils {
     val input =
       """
         |def f(): String \ IO =
-        |    import new java.lang.Object(): ##java.lang.Object as mkObj;
+        |    import java_new java.lang.Object(): ##java.lang.Object as mkObj;
         |    checked_cast(mkObj())
       """.stripMargin
     val result = compile(input, Options.TestWithLibMin)
@@ -573,7 +602,7 @@ class TestSafety extends AnyFunSuite with TestUtils {
     val input =
       """
         |def f(): Bool \ IO =
-        |    import new java.lang.StringBuilder(): ##java.lang.StringBuilder as newSb;
+        |    import java_new java.lang.StringBuilder(): ##java.lang.StringBuilder as newSb;
         |    checked_cast(newSb())
       """.stripMargin
     val result = compile(input, Options.TestWithLibMin)
@@ -585,7 +614,7 @@ class TestSafety extends AnyFunSuite with TestUtils {
       """
         |enum Boolean(Bool)
         |def f(): Boolean \ IO =
-        |    import new java.lang.StringBuilder(): ##java.lang.StringBuilder as newSb;
+        |    import java_new java.lang.StringBuilder(): ##java.lang.StringBuilder as newSb;
         |    checked_cast(newSb())
       """.stripMargin
     val result = compile(input, Options.TestWithLibMin)
@@ -608,7 +637,7 @@ class TestSafety extends AnyFunSuite with TestUtils {
     val input =
       """
         |def f(): String \ IO =
-        |    import new java.lang.StringBuilder(): ##java.lang.StringBuilder as newSb;
+        |    import java_new java.lang.StringBuilder(): ##java.lang.StringBuilder as newSb;
         |    checked_cast(newSb())
       """.stripMargin
     val result = compile(input, Options.TestWithLibMin)
@@ -742,6 +771,79 @@ class TestSafety extends AnyFunSuite with TestUtils {
       """.stripMargin
     val result = compile(input, Options.TestWithLibNix)
     expectError[SafetyError.IllegalEntryPointSignature](result)
+  }
+
+  test("IllegalExportFunction.01") {
+    val input =
+      """
+        |mod Mod { @Export def id(x: Int32): Int32 = x }
+        |""".stripMargin
+    val result = compile(input, Options.TestWithLibNix)
+    expectError[SafetyError.NonPublicExport](result)
+  }
+
+  test("IllegalExportFunction.02") {
+    val input =
+      """
+        |@Export pub def id(x: Int32): Int32 = x
+        |""".stripMargin
+    val result = compile(input, Options.TestWithLibNix)
+    expectError[SafetyError.IllegalExportNamespace](result)
+  }
+
+  test("IllegalExportFunction.03") {
+    val input =
+      """
+        |mod Mod { @Export pub def <><(x: Int32, _y: Int32): Int32 = x }
+        |""".stripMargin
+    val result = compile(input, Options.TestWithLibNix)
+    expectError[SafetyError.IllegalExportName](result)
+  }
+
+  test("IllegalExportFunction.04") {
+    val input =
+      """
+        |eff Print
+        |def println(x: t): t \ Print = ???()
+        |mod Mod { @Export pub def id(x: Int32): Int32 \ Print = println(x) }
+        |""".stripMargin
+    val result = compile(input, Options.TestWithLibNix)
+    expectError[SafetyError.IllegalExportEffect](result)
+  }
+
+  test("IllegalExportFunction.05") {
+    val input =
+      """
+        |enum Option[t] {
+        |  case Some(t)
+        |  case None
+        |}
+        |mod Mod { @Export pub def id(x: Int32): Option[Int32] = Some(x) }
+        |""".stripMargin
+    val result = compile(input, Options.TestWithLibNix)
+    expectError[SafetyError.IllegalExportType](result)
+  }
+
+  test("IllegalExportFunction.06") {
+    val input =
+      """
+        |enum Option[t] {
+        |  case Some(t)
+        |  case None
+        |}
+        |mod Mod { @Export pub def id(x: Int32, _y: Option[Int32]): Int32 = x }
+        |""".stripMargin
+    val result = compile(input, Options.TestWithLibNix)
+    expectError[SafetyError.IllegalExportType](result)
+  }
+
+  test("IllegalExportFunction.07") {
+    val input =
+      """
+        |mod Mod { @Export pub def id[t](x: t): t = x }
+        |""".stripMargin
+    val result = compile(input, Options.TestWithLibNix)
+    expectError[SafetyError.IllegalExportPolymorphism](result)
   }
 
 }

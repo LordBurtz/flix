@@ -111,12 +111,14 @@ instance SemiGroup[Nel[a]] {
     pub def combine(x: Nel[a], y: Nel[a]): Nel[a] = Nel.append(x, y)
 }
 
-instance Iterable[Nel] {
+instance Iterable[Nel[a]] {
+    type Elm = a
     pub def iterator(rc: Region[r], l: Nel[a]): Iterator[a, r, r] \ r = Nel.iterator(rc, l)
 }
 
 instance ToJava[Nel[a]] {
-    type O = ##java.util.List
+    type Out = ##java.util.List
+    type Aef = IO
     pub def toJava(l: Nel[a]): ##java.util.List \ IO = Adaptor.toList(l)
 }
 
@@ -127,7 +129,7 @@ mod Nel {
     ///
     pub def toString(l: Nel[a]): String with ToString[a] = region rc {
         let Nel(x, xs) = l;
-        let sb = StringBuilder.new(rc);
+        let sb = StringBuilder.empty(rc);
         StringBuilder.appendString!("Nel(${x}, ", sb);
 
         let list = List.toString(xs);
@@ -309,10 +311,10 @@ mod Nel {
     }
 
     ///
-    /// Returns `l` with every occurrence of `from` replaced by `to`.
+    /// Returns `l` with every occurrence of `src` replaced by `dst`.
     ///
-    pub def replace(from: {from = a}, to: {to = a}, l: Nel[a]): Nel[a] with Eq[a] =
-        map(e -> if (e == from.from) to.to else e, l)
+    pub def replace(src: {src = a}, dst: {dst = a}, l: Nel[a]): Nel[a] with Eq[a] =
+        map(e -> if (e == src#src) dst#dst else e, l)
 
     ///
     /// Returns all permutations of `l` in lexicographical order by element indices in `l`.
@@ -558,7 +560,7 @@ mod Nel {
     /// Returns `l` as a vector.
     ///
     pub def toVector(l: Nel[a]): Vector[a] = region rc {
-        let arr = Array.new(rc, length(l));
+        let arr = Array.empty(rc, length(l));
         forEachWithIndex((i, x) -> Array.put(x, i, arr), l);
         Array.toVector(arr)
     }
@@ -567,7 +569,7 @@ mod Nel {
     /// Returns `l` as a MutDeque.
     ///
     pub def toMutDeque(rc: Region[r], l: Nel[a]): MutDeque[a, r] \ r =
-        let d = MutDeque.new(rc);
+        let d = MutDeque.empty(rc);
         forEach(x -> MutDeque.pushBack(x, d), l);
         d
 

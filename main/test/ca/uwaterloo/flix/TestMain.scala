@@ -51,6 +51,12 @@ class TestMain extends AnyFunSuite {
     assert(opts.command == Main.Command.Release)
   }
 
+  test("outdated") {
+    val args = Array("outdated")
+    val opts = Main.parseCmdOpts(args).get
+    assert(opts.command == Main.Command.Outdated)
+  }
+
   test("doc") {
     val args = Array("doc")
     val opts = Main.parseCmdOpts(args).get
@@ -183,12 +189,6 @@ class TestMain extends AnyFunSuite {
     assert(opts.xnoboolspecialcases)
   }
 
-  test("--Xno-bool-table") {
-    val args = Array("--Xno-bool-table")
-    val opts = Main.parseCmdOpts(args).get
-    assert(opts.xnobooltable)
-  }
-
   test("--Xno-bool-unif") {
     val args = Array("--Xno-bool-unif")
     val opts = Main.parseCmdOpts(args).get
@@ -207,16 +207,16 @@ class TestMain extends AnyFunSuite {
     assert(opts.explain)
   }
 
+  test("--Xdeprecated") {
+    val args = Array("--Xdeprecated")
+    val opts = Main.parseCmdOpts(args).get
+    assert(opts.xdeprecated)
+  }
+
   test("--Xsummary") {
     val args = Array("--Xsummary")
     val opts = Main.parseCmdOpts(args).get
     assert(opts.xsummary)
-  }
-
-  test("--Xparser") {
-    val args = Array("--Xparser")
-    val opts = Main.parseCmdOpts(args).get
-    assert(opts.xparser)
   }
 
 }

@@ -19,6 +19,7 @@ package ca.uwaterloo.flix.language.phase
 import ca.uwaterloo.flix.api.Flix
 import ca.uwaterloo.flix.language.ast.ReducedAst._
 import ca.uwaterloo.flix.language.ast.{MonoType, Symbol}
+import ca.uwaterloo.flix.language.dbg.AstPrinter.DebugReducedAst
 import ca.uwaterloo.flix.util.ParOps
 
 import scala.annotation.tailrec
@@ -73,7 +74,7 @@ object VarOffsets {
     case Expr.ApplyDef(_, args, _, _, _, _) =>
       visitExps(args, i0)
 
-    case Expr.ApplySelfTail(_, _, args, _, _, _) =>
+    case Expr.ApplySelfTail(_, args, _, _, _) =>
       visitExps(args, i0)
 
     case Expr.IfThenElse(exp1, exp2, exp3, _, _, _) =>
@@ -114,7 +115,7 @@ object VarOffsets {
           visitExp(exp, i3)
       }
 
-    case Expr.TryWith(exp, _, _, _, _, _) =>
+    case Expr.TryWith(exp, _, _, _, _, _, _) =>
       // The expressions in TryWith are not executed here (concretely they're
       // always closures) and should not have var offsets here.
       // They don't contain binders so visiting them does nothing.

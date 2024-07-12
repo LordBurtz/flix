@@ -21,6 +21,7 @@
 /// numerical equality (are the values the same after the scales have been
 /// normalized) is provided by the function `numericEquals`.
 mod BigDecimal {
+    import java.math.BigDecimal;
 
     ///
     /// Returns the smaller of `x` and `y`.
@@ -71,8 +72,7 @@ mod BigDecimal {
     ///
     pub def fromString(s: String): Option[BigDecimal] = try {
         import java.lang.String.strip(): String \ {};
-        import new java.math.BigDecimal(String): BigDecimal \ {} as parseBigDecimal;
-        Some(s |> strip |> parseBigDecimal)
+        Some(unsafe new BigDecimal(s |> strip))
     } catch {
         case _: ##java.lang.NumberFormatException => None
     }
@@ -110,7 +110,7 @@ mod BigDecimal {
     ///
     pub def ceil(x: BigDecimal): BigDecimal =
         import java.math.BigDecimal.setScale(Int32, ##java.math.RoundingMode): BigDecimal \ {};
-        import static get java.math.RoundingMode.CEILING: ##java.math.RoundingMode \ {} as getCeiling;
+        import static java_get_field java.math.RoundingMode.CEILING: ##java.math.RoundingMode \ {} as getCeiling;
         setScale(x, 0, getCeiling())
 
     ///
@@ -118,7 +118,7 @@ mod BigDecimal {
     ///
     pub def floor(x: BigDecimal): BigDecimal =
         import java.math.BigDecimal.setScale(Int32, ##java.math.RoundingMode): BigDecimal \ {};
-        import static get java.math.RoundingMode.FLOOR: ##java.math.RoundingMode \ {} as getFloor;
+        import static java_get_field java.math.RoundingMode.FLOOR: ##java.math.RoundingMode \ {} as getFloor;
         setScale(x, 0, getFloor())
 
     ///
@@ -129,7 +129,7 @@ mod BigDecimal {
     ///
     pub def round(x: BigDecimal): BigDecimal =
         import java.math.BigDecimal.setScale(Int32, ##java.math.RoundingMode): BigDecimal \ {};
-        import static get java.math.RoundingMode.HALF_EVEN: ##java.math.RoundingMode \ {} as getHalfEven;
+        import static java_get_field java.math.RoundingMode.HALF_EVEN: ##java.math.RoundingMode \ {} as getHalfEven;
         setScale(x, 0, getHalfEven())
 
     ///
